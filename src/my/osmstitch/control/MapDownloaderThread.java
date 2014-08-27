@@ -1,5 +1,6 @@
 package my.osmstitch.control;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -110,7 +111,7 @@ public class MapDownloaderThread extends Thread{
 	
 	
 	
-	public static int enqueueSquare(int tile_x, int tile_y, int tile_radius, User user, boolean force){
+	public static int enqueueSquareOfTiles(int tile_x, int tile_y, int tile_radius, User user, boolean force){
 		int numEnqueued = 0;
 		//Iterate through the square around this tile
 		for(int x = tile_x - tile_radius; x <= tile_x + tile_radius; x++){
@@ -132,7 +133,7 @@ public static int enqueueSquare(double center_lon, double center_lat, int tile_r
 		//Create the center tile as a reference point
 		Tile centerTile = new Tile(center_lon, center_lat);
 		
-		return enqueueSquare(centerTile.getGrid_x(), centerTile.getGrid_y(), tile_radius, user, force);
+		return enqueueSquareOfTiles(centerTile.getGrid_x(), centerTile.getGrid_y(), tile_radius, user, force);
 	}
 	
 	
@@ -231,7 +232,8 @@ public static int enqueueSquare(double center_lon, double center_lat, int tile_r
 
 		InputStream in = null;
 		OutputStream out = null;
-
+		File tmp = new File(Tile.MAP_DIR);
+		tmp.mkdir();
 
 		try{
 			HttpClient httpclient = new DefaultHttpClient();

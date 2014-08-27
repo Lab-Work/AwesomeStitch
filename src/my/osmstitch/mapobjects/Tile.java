@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import my.osmstitch.control.Log;
+import my.osmstitch.control.MapDownloaderThread;
 
 import org.postgis.LinearRing;
 import org.postgis.PGgeometryLW;
@@ -25,6 +26,7 @@ public class Tile extends DBObject {
 	public static final double BIG_TILE_SIZE = .1;
 	public static final double SMALL_TILE_SIZE = .02;
 	public static final int BUFFER_SIZE = 1;
+	public static final String MAP_DIR = "tmp_map";
 	
 	boolean still_downloading = false;
 	
@@ -141,7 +143,7 @@ public class Tile extends DBObject {
 
 
 	public String fileName(){
-		return "map/tile_" + grid_x + "_" + grid_y + ".osm";
+		return MAP_DIR + "/tile_" + grid_x + "_" + grid_y + ".osm";
 	}
 
 

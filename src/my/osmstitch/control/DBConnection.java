@@ -50,7 +50,6 @@ public class DBConnection {
 	 */
 	private static String schema = null;
 
-	public static String DEFAULT_SCHEMA = "v2";
 
 
 	public static long DISTANT_FUTURE = 40000000000000L;
@@ -88,7 +87,7 @@ public class DBConnection {
 		try{
 			//Use the JDBC DriverManager to make the connection.
 			con = DriverManager.getConnection(url, userName, password);
-			chooseSchema(DEFAULT_SCHEMA);
+			chooseSchema(schema);
 		}
 		catch(SQLException ex){
 			Log.v("DB","SQL EXCEPTION!");
@@ -128,6 +127,8 @@ public class DBConnection {
 					dbUserName = toks[1].trim();
 				else if(toks[0].equalsIgnoreCase("db_password"))
 					dbPassword = toks[1].trim();
+				else if(toks[0].equalsIgnoreCase("db_schema"))
+					schema = toks[1].trim();
 
 			}
 		} catch (IOException e) {
@@ -148,7 +149,7 @@ public class DBConnection {
 	 * @param schemaName the name of the schema to choose.
 	 */
 	public static boolean chooseSchema(String schemaName){
-
+		schema = schemaName;
 		try{
 			Statement st = con.createStatement();
 
@@ -187,50 +188,46 @@ public class DBConnection {
 	 */
 	public static void createSchema(String name){
 
-		try{
-			//create a schema with the appropriate name
-			Statement st = con.createStatement();
-			String query = "create schema " + name + ";";
-			st.executeUpdate(query);
+		//Create the Schema
+		executeUpdate("CREATE SCHEMA " + name + ";");
+		
+		//Create the tables within this schema
+		executeUpdate("CREATE TABLE tmp_schema.changelog ( timestamp BIGINT, nodes_added BIGINT, nodes_deleted BIGINT, nodes_updated BIGINT, nodes_untouched BIGINT, links_added BIGINT, links_deleted BIGINT, links_updated BIGINT, links_untouched BIGINT, file_name CHARACTER VARYING(200), description CHARACTER VARYING(5000) );");
+		executeUpdate("CREATE TABLE tmp_schema.nodes ( node_id BIGINT, is_complete BOOLEAN DEFAULT TRUE, num_in_links SMALLINT, num_out_links SMALLINT, osm_traffic_controller CHARACTER VARYING(100), geom geometry('POINT', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (node_id, birth_timestamp) );");
+		executeUpdate("CREATE TABLE tmp_schema.detail_nodes ( node_id BIGINT, is_complete BOOLEAN DEFAULT TRUE, num_in_links SMALLINT, num_out_links SMALLINT, osm_traffic_controller CHARACTER VARYING(100), geom geometry('POINT', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (node_id, birth_timestamp) );");
+		executeUpdate("CREATE TABLE tmp_schema.counting_nodes ( counting_node_id BIGINT, name CHARACTER VARYING(200), link1_id BIGINT, link2_id BIGINT, offset_ratio1 NUMERIC(8,3), offset_ratio2 NUMERIC(8,3), geom geometry('POINT', 4326), birth_timestamp BIGINT, death_timestamp BIGINT, CONSTRAINT counting_nodes_pkey PRIMARY KEY (counting_node_id)  );");
+		executeUpdate("CREATE TABLE tmp_schema.links ( link_id BIGINT, begin_node_id BIGINT NOT NULL, end_node_id BIGINT NOT NULL, begin_angle NUMERIC(5,2), end_angle NUMERIC(5,2), street_length NUMERIC(8,3), osm_name CHARACTER VARYING(100), osm_class CHARACTER VARYING(30), osm_way_id BIGINT, geom geometry('LINESTRING', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (link_id, birth_timestamp), UNIQUE (begin_node_id, end_node_id, birth_timestamp) );");
+		executeUpdate("CREATE TABLE tmp_schema.detail_links ( link_id BIGINT, proc_link_id BIGINT, begin_node_id BIGINT NOT NULL, end_node_id BIGINT NOT NULL, begin_angle NUMERIC(5,2), end_angle NUMERIC(5,2), street_length NUMERIC(8,3), osm_name CHARACTER VARYING(100), osm_class CHARACTER VARYING(30), osm_way_id BIGINT, geom geometry('LINESTRING', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (link_id, birth_timestamp) );");
+		executeUpdate("CREATE TABLE tmp_schema.detail_link_mapping ( link_id BIGINT, detail_link_id BIGINT, osm_way_id BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT );");
+		executeUpdate("CREATE TABLE tmp_schema.tiles ( grid_x INTEGER, grid_y INTEGER, left_lon NUMERIC, bottom_lat NUMERIC, created_timestamp BIGINT, updated_timestamp BIGINT, still_downloading BOOLEAN, geom geometry('POLYGON', 4326) );");
+		executeUpdate("CREATE TABLE tmp_schema.user_tiles ( user_id BIGINT, grid_x INTEGER, grid_y INTEGER, ordered_timestamp BIGINT, owned_timestamp BIGINT, UNIQUE (user_id, grid_x, grid_y) );");
+		executeUpdate("CREATE TABLE tmp_schema.users ( user_id BIGINT, username CHARACTER VARYING(100) NOT NULL, password CHARACTER VARYING(100), email CHARACTER VARYING(100), phone_number CHARACTER VARYING(40), first_name CHARACTER VARYING(100), last_name CHARACTER VARYING(100), UNIQUE (username), CONSTRAINT users_pkey PRIMARY KEY (user_id) );");
+		executeUpdate("CREATE TABLE tmp_schema.extravars (name CHARACTER VARYING, val CHARACTER VARYING, UNIQUE(name) );");
 
+		
+		
+		//Create Indexes - these become very important if the map gets big
+		executeUpdate("CREATE INDEX nodes_id ON tmp_schema.nodes USING hash(node_id);");
+		executeUpdate("CREATE INDEX nodes_geom_gist ON tmp_schema.nodes USING GIST (geom);");
+		executeUpdate("CREATE INDEX nodes_birth_timestamp on tmp_schema.nodes USING btree(birth_timestamp);");
+		executeUpdate("CREATE INDEX nodes_death_timestamp on tmp_schema.nodes USING btree(death_timestamp);");
 
-		}
-		catch(SQLException e){
+		executeUpdate("CREATE INDEX detail_nodes_id ON tmp_schema.detail_nodes USING hash(node_id);");
+		executeUpdate("CREATE INDEX detail_nodes_geom_gist ON tmp_schema.detail_nodes USING GIST (geom);");
+		executeUpdate("CREATE INDEX detail_nodes_birth_timestamp on tmp_schema.detail_nodes USING btree(birth_timestamp);");
+		executeUpdate("CREATE INDEX detail_nodes_death_timestamp on tmp_schema.detail_nodes USING btree(death_timestamp);");
 
-			if(e.getSQLState().equals("42P06"))
-				Log.v("DB","SCHEMA ALREADY EXISTS");
-			else{
-				Log.v("DB","SQL EXCEPTION");
-				Log.v("DB",e.getSQLState());
-				Log.e(e);
-				return;
-			}
-		}
+		executeUpdate("CREATE INDEX links_id ON tmp_schema.links USING hash(link_id);");
+		executeUpdate("CREATE INDEX links_way_id ON tmp_schema.links USING hash(osm_way_id);");
+		executeUpdate("CREATE INDEX links_geom_gist ON tmp_schema.links USING GIST (geom);");
+		executeUpdate("CREATE INDEX links_birth_timestamp on tmp_schema.links USING btree(birth_timestamp);");
+		executeUpdate("CREATE INDEX links_death_timestamp on tmp_schema.links USING btree(death_timestamp);");
 
-		//if we have not chosen any schema yet, we assume that we want to choose this one
-		chooseSchema(name);
-
-		String CREATE_CHLOG = "CREATE TABLE tmp_schema.changelog ( timestamp BIGINT, nodes_added BIGINT, nodes_deleted BIGINT, nodes_updated BIGINT, nodes_untouched BIGINT, links_added BIGINT, links_deleted BIGINT, links_updated BIGINT, links_untouched BIGINT, file_name CHARACTER VARYING(200), description CHARACTER VARYING(5000) );";
-		String CREATE_NODES = "CREATE TABLE tmp_schema.nodes ( node_id BIGINT, is_complete BOOLEAN DEFAULT TRUE, num_in_links SMALLINT, num_out_links SMALLINT, osm_traffic_controller CHARACTER VARYING(100), geom geometry('POINT', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (node_id, birth_timestamp) );";
-		String CREATE_DETAIL_NODES = "CREATE TABLE tmp_schema.detail_nodes ( node_id BIGINT, is_complete BOOLEAN DEFAULT TRUE, num_in_links SMALLINT, num_out_links SMALLINT, osm_traffic_controller CHARACTER VARYING(100), geom geometry('POINT', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (node_id, birth_timestamp) );";
-		String CREATE_COUNTING_NODES = "CREATE TABLE tmp_schema.counting_nodes ( counting_node_id BIGINT, name CHARACTER VARYING(200), link1_id BIGINT, link2_id BIGINT, offset_ratio1 NUMERIC(8,3), offset_ratio2 NUMERIC(8,3), geom geometry('POINT', 4326), birth_timestamp BIGINT, death_timestamp BIGINT, CONSTRAINT counting_nodes_pkey PRIMARY KEY (counting_node_id)  );";
-		String CREATE_LINKS = "CREATE TABLE tmp_schema.links ( link_id BIGINT, begin_node_id BIGINT NOT NULL, end_node_id BIGINT NOT NULL, begin_angle NUMERIC(5,2), end_angle NUMERIC(5,2), street_length NUMERIC(8,3), osm_name CHARACTER VARYING(100), osm_class CHARACTER VARYING(30), osm_way_id BIGINT, geom geometry('LINESTRING', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (link_id, birth_timestamp), UNIQUE (begin_node_id, end_node_id, birth_timestamp) --CONSTRAINT links_begin_node_id_fkey FOREIGN KEY (begin_node_id) REFERENCES tmp_schema.nodes(node_id), --CONSTRAINT links_end_node_id_fkey FOREIGN KEY (end_node_id) REFERENCES tmp_schema.nodes(node_id) );";
-		String CREATE_DETAIL_LINKS = "CREATE TABLE tmp_schema.detail_links ( link_id BIGINT, proc_link_id BIGINT, begin_node_id BIGINT NOT NULL, end_node_id BIGINT NOT NULL, begin_angle NUMERIC(5,2), end_angle NUMERIC(5,2), street_length NUMERIC(8,3), osm_name CHARACTER VARYING(100), osm_class CHARACTER VARYING(30), osm_way_id BIGINT, geom geometry('LINESTRING', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (link_id, birth_timestamp), UNIQUE (begin_node_id, end_node_id, birth_timestamp) --CONSTRAINT links_begin_node_id_fkey FOREIGN KEY (begin_node_id) REFERENCES tmp_schema.nodes(node_id), --CONSTRAINT links_end_node_id_fkey FOREIGN KEY (end_node_id) REFERENCES tmp_schema.nodes(node_id) );";
-		String CREATE_DLM = "CREATE TABLE tmp_schema.detail_link_mapping ( link_id BIGINT, detail_link_id BIGINT, osm_way_id BIGINT, --geom geometry('LINESTRING', 4326), birth_timestamp BIGINT, death_timestamp BIGINT );";
-		String CREATE_TILES = "CREATE TABLE tmp_schema.tiles ( grid_x INTEGER, grid_y INTEGER, left_lon NUMERIC, bottom_lat NUMERIC, created_timestamp BIGINT, updated_timestamp BIGINT, still_downloading BOOLEAN, geom geometry('POLYGON', 4326) );";
-		String CREATE_USER_TILES = "CREATE TABLE tmp_schema.user_tiles ( user_id BIGINT, grid_x INTEGER, grid_y INTEGER, ordered_timestamp BIGINT, owned_timestamp BIGINT, UNIQUE (user_id, grid_x, grid_y) );";
-		String CREATE_USERS = "CREATE TABLE tmp_schema.users ( user_id BIGINT, username CHARACTER VARYING(100) NOT NULL, password CHARACTER VARYING(100), email CHARACTER VARYING(100), phone_number CHARACTER VARYING(40), first_name CHARACTER VARYING(100), last_name CHARACTER VARYING(100), UNIQUE (username), CONSTRAINT users_pkey PRIMARY KEY (user_id) );";
-
-		executeQuery(CREATE_CHLOG);
-		executeQuery(CREATE_NODES);
-		executeQuery(CREATE_DETAIL_NODES);
-		executeQuery(CREATE_COUNTING_NODES);
-		executeQuery(CREATE_LINKS);
-		executeQuery(CREATE_DETAIL_LINKS);
-		executeQuery(CREATE_DLM);
-		executeQuery(CREATE_TILES);
-		executeQuery(CREATE_USER_TILES);
-		executeQuery(CREATE_USERS);
+		executeUpdate("CREATE INDEX detail_links_id ON tmp_schema.detail_links USING hash(link_id);");
+		executeUpdate("CREATE INDEX detail_links_way_id ON tmp_schema.detail_links USING hash(osm_way_id);");
+		executeUpdate("CREATE INDEX detail_links_geom_gist ON tmp_schema.detail_links USING GIST (geom);");
+		executeUpdate("CREATE INDEX detail_links_birth_timestamp on tmp_schema.detail_links USING btree(birth_timestamp);");
+		executeUpdate("CREATE INDEX detail_links_death_timestamp on tmp_schema.detail_links USING btree(death_timestamp);");
 
 	}
 
@@ -472,6 +469,20 @@ public class DBConnection {
 			Log.v("DB", sql);
 			Log.e(e);
 			return null;
+		}
+	}
+	
+	public static void executeUpdate(String sql){
+		sql = sql.replace("tmp_schema", DBConnection.getSchemaName());
+
+		try {
+			Statement st = DBConnection.getConnection().createStatement();
+			st.executeUpdate(sql);
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			Log.v("DB", "SQL Exception");
+			Log.v("DB", sql);
+			Log.e(e);
 		}
 	}
 
