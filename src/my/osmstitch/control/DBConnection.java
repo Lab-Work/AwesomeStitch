@@ -502,10 +502,19 @@ public class DBConnection {
 		}
 	}
 
+	/**
+	 * Adds a new User to the database
+	 * @param u - The new User
+	 */
 	public static void addNewUser(User u){
 		insertNow(u);
 	}
 
+	/**
+	 * Looks up a User by their ID number in the database
+	 * @param id The ID of the desired user
+	 * @return a User object that matches the ID, or null if no such user exists.
+	 */
 	public static User lookupUser(long id){
 		String sql = "SELECT * FROM " + new User("","").getTableName() + " WHERE "
 				+ "user_id = " + id;
@@ -523,6 +532,11 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Looks up a ContingNode by its ID in the database
+	 * @param id The ID nubmer of the CountingNode (should be a negative number)
+	 * @return A CountingNode object with the matching ID
+	 */
 	public static CountingNode getCountingNodeById(long id){
 		String tableName = new CountingNode().getTableName().replace("tmp_schema", getSchemaName());
 		String query = "SELECT * FROM " + tableName + " WHERE counting_node_id = " + id + ";";
@@ -544,6 +558,14 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Creates a manual CountingNode in the database, on top of a link
+	 * @param lon - The desired Longitude of the CountingNode
+	 * @param lat - The desired latitude of the CountingNode
+	 * @param name - A new name for the CountingNode
+	 * @param osm_street_name_filter - If this is not null, the search for the nearest link is restricted to those that match the name
+	 * @return The generated CountingNode (which has also been added to the DB)
+	 */
 	public static CountingNode createCountingNode(double lon, double lat, String name, String osm_street_name_filter){
 		//First figure out the dimensions of the box we will use for querying
 		double latheight = (CountingNode.MAX_ERROR_DISTANCE / (Direction.EARTH_RADIUS * 2 * Math.PI)) * 360;
@@ -653,15 +675,14 @@ public class DBConnection {
 	 * @param timestamp the time for which we want to retrieve the map state (the map may be changing over time)
 	 * @param processed True if we want the preprocessed map, False if we want the detailed map
 	 * @param useSafetyMargin True if we want to also include parts of the map within a "safety margin" of the box.  The safety margin should be used when doing updates to the DB, but not when sending a box to the app.  This prevents us from sending too much unnecessary data at once.
+	 * @param includeFullWay - If true, extra links will be included so that the entire Way is used (i.e. no major roads will be "cut in half")
+	 * @param includeDetailLinkMapping - If true, extra information is included that stored the mapping between the detailed and processed map
 	 * @return			a MapRegion object.  This object contains the lists of relevant Nodes and Links.
 	 */
 	public static BBox boundingBoxQuery(double left, double top, double right, double bottom, long timestamp, boolean processed, boolean useSafetyMargin, boolean includeFullWay, boolean includeDetailLinkMapping){
 
-		//System.out.println("Start");
-		long start_timestamp = System.currentTimeMillis();
 		//create corner points based on given dimensions
 		//include some safety margin around this box as well
-
 		double effectiveLeft = left;
 		double effectiveRight = right;
 		double effectiveTop = top;
@@ -701,24 +722,31 @@ public class DBConnection {
 		//setup the BoundingBox object, where we will place all Nodes and Links
 		BBox bbox = new BBox(left, top, right, bottom);
 
-		//SELECT * FROM schema_name.links where ST_Intersects(schema_name.links.geom, 'box_WKT_string');
+		//======================== STEP 1 ====================================
+		//Get all of the Links that intersect the Bounding Box (A GiST index is used for fast querying)
+		
+		
 		String query;
-
-		if(includeFullWay){
-			String subquery = "SELECT osm_way_id FROM " + linkTableName + " WHERE ST_Intersects("
-					+ linkTableName + ".geom, 'SRID=4326;" + box.toString() + "'::geometry)" +
-					"and birth_timestamp <= " + timestamp + " and death_timestamp > " + timestamp;
-
-			query = "SELECT * FROM " + linkTableName + " WHERE osm_way_id in (" + subquery + ")" + 
-					" AND birth_timestamp <= " + timestamp + " and death_timestamp > " + timestamp + ";";
-		}
-		else{
+		if(!includeFullWay){
+			//Simple query - the full way is not desired, so just get links that intersect the box
 			query = "SELECT * FROM " + linkTableName + " WHERE ST_Intersects("
 					+ linkTableName + ".geom, 'SRID=4326;" + box.toString() + "'::geometry)" +
 					"and birth_timestamp <= " + timestamp + " and death_timestamp > " + timestamp + ";";
 		}
+		else{
+			//A more complex query which contains all links that intersect the box, PLUS any additional links that are part of the same Way
+			
+			//Note the similarity of this subquery to the simple query above
+			String subquery = "SELECT osm_way_id FROM " + linkTableName + " WHERE ST_Intersects("
+					+ linkTableName + ".geom, 'SRID=4326;" + box.toString() + "'::geometry)" +
+					"and birth_timestamp <= " + timestamp + " and death_timestamp > " + timestamp;
 
-		//System.out.println("Made queries. Getting links...");
+			//Select Links whose way_id matches the way_id of any Link intersecting the box
+			query = "SELECT * FROM " + linkTableName + " WHERE osm_way_id in (" + subquery + ")" + 
+					" AND birth_timestamp <= " + timestamp + " and death_timestamp > " + timestamp + ";";
+		}
+
+		//Iterate through the results and store all Links in a Set
 		Set<Link> linkSet = new HashSet<Link>();
 		try{
 
@@ -740,10 +768,10 @@ public class DBConnection {
 			Log.v("DB",e.getSQLState());
 			Log.e(e);
 		}
-		//System.out.println("Done.");
 
 
-		//STEP 3 - retrieve all CountingNodes that intersect the box
+		// =================================== STEP 2 =======================================
+		//also retrieve CountingNodes that intersect the box
 		query = "SELECT * FROM " + countingNodeTableName + " WHERE ST_Intersects("
 				+ countingNodeTableName + ".geom, 'SRID=4326;" + box.toString() + "'::geometry)" +
 				"and birth_timestamp <= " + timestamp + " and death_timestamp > " + timestamp + ";";
@@ -775,7 +803,8 @@ public class DBConnection {
 		}
 
 
-		//STEP 2 - retrieve extra links that are referred to by the CountingNodes
+		//=============================  STEP 3 ===================================
+		//retrieve extra links that are referred to by the CountingNodes
 		//Just in case they fall slightly out of the box
 		if(processed){
 			if(!extraLinkIds.isEmpty()){
@@ -814,9 +843,9 @@ public class DBConnection {
 			}
 		}
 
-		//	System.out.println("Building node query.");
 
-		//STEP 1 - Retrieve all nodes that intersect the box
+		//============================== STEP 4 ==================================
+		// Retrieve all nodes that match the desired links (i.e. the set of begin_nodes and end_nodes)
 		if(!linkSet.isEmpty()){
 			Set<Long> nodeIds = new HashSet<Long>();
 			for(Link l : linkSet){
@@ -864,16 +893,15 @@ public class DBConnection {
 			}
 		}
 
-		//System.out.println("done.");
 
-		//Finally, add the links
+		//Now that the appropriate nodes are loaded, the Links can be added to the BBox
 		for(Link l: linkSet){
 			bbox.add(l);
 		}
 
 
-		//STEP X:
-		//If desired, also include the mapping between DetailLInks and processed LInks
+		// ============================== STEP 5 =====================================
+		//If desired, also include the mapping between DetailLInks and processed Links
 		if(includeDetailLinkMapping){
 			String subquery = "SELECT osm_way_id FROM " + linkTableName + " WHERE ST_Intersects("
 					+ linkTableName + ".geom, 'SRID=4326;" + box.toString() + "'::geometry)" +
@@ -910,6 +938,18 @@ public class DBConnection {
 		return bbox;
 	}
 
+	/**
+	 * A simpler call than the previous boundingBoxQuery().  Uses false and false as default arguments to the last two arguments (includeFullWay and includeDetailedLinkMapping) 
+	 * @param left		the longitude of the left side of the box
+	 * @param top		the latitude of the top of the box
+	 * @param right		the longitude of the right side of the box
+	 * @param bottom	the latitude of the bottom of the box
+	 * @param timestamp the time for which we want to retrieve the map state (the map may be changing over time)
+	 * @param processed True if we want the preprocessed map, False if we want the detailed map
+	 * @param useSafetyMargin True if we want to also include parts of the map within a "safety margin" of the box.  The safety margin should be used when doing updates to the DB, but not when sending a box to the app.  This prevents us from sending too much unnecessary data at once.
+	 * @return
+	 */
+	
 	public static BBox boundingBoxQuery(double left, double top, double right, double bottom, long timestamp, boolean processed, boolean useSafetyMargin){
 		return boundingBoxQuery(left, top, right, bottom, timestamp, processed, useSafetyMargin, false, false);
 	}
@@ -952,6 +992,13 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Recall that each Node maintains a count of attached in-links and out-links.
+	 * This method updates those counts by examining connected links in the DB, for a specified set of Nodes.
+	 * @param nodeList The list of Nodes to be updated
+	 * @param timeStamp The time at which the update is to be performed.
+	 * @param processed True if we are updating the processed map, False if we are updating the detailed map
+	 */
 	public static void updateNodeLinkCounts(List<Node> nodeList, long timeStamp, boolean processed){
 		String nodeTableName, linkTableName;
 		if(processed){
@@ -989,6 +1036,11 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Updates a list of Node death timestamps in the DB
+	 * @param nodeList a list of Node objects which have the new correct timestamps
+	 * @param processed True if we are editing the processed map, False if we are editing the detailed map
+	 */
 	public static void updateNodeDeathTimestamps(List<Node> nodeList, boolean processed){
 		String tableName;
 		if(processed)
@@ -1024,6 +1076,11 @@ public class DBConnection {
 
 
 
+	/**
+	 * Updates a list of Link death timestamps in the DB
+	 * @param linkList a list of Link objects, which have the new correct timestamps
+	 * @param processed True if we are editing the processed map, False if we are editing the detailed map
+	 */
 	public static void updateLinkDeathTimestamps(List<Link> linkList, boolean processed){
 		String tableName;
 
@@ -1053,6 +1110,10 @@ public class DBConnection {
 		}
 	}
 
+	/**
+	 * Updates the death timestamp of a set of CountingNodes
+	 * @param countingNodeList A list of CountingNode objects that contain the correct timestamps
+	 */
 	public static void updateCountingNodeDeathTimestamps(List<CountingNode> countingNodeList){
 
 		String tableName = new CountingNode().getTableName().replace("tmp_schema", getSchemaName());
@@ -1079,6 +1140,10 @@ public class DBConnection {
 
 	}
 
+	/**
+	 * Updates the death timestamps for a set of DetailLinkMappings
+	 * @param dlmList A list of DetialLinkMappings that contain the correct timestamps
+	 */
 	public static void updateDLMDeathTimestamps(List<DetailLinkMapping> dlmList){
 		String tableName = new DetailLinkMapping().getTableName().replace("tmp_schema", getSchemaName());
 
@@ -1104,6 +1169,12 @@ public class DBConnection {
 	}
 	
 	
+	/**
+	 * Looks up a Link object by ID
+	 * @param id The desired Lonk ID
+	 * @param timestamp The time of the desired map (since there are multiple versions of the map)
+	 * @return The Link object with the matching ID, or null if no match
+	 */
 	public static Link lookupLink(long id, long timestamp){
 		String sql = "SELECT * FROM " + (new Link().getTableName()) + 
 				" WHERE link_id=" + id + " and birth_timestamp <= " + timestamp +
@@ -1129,6 +1200,12 @@ public class DBConnection {
 		}
 	}
 
+	/**
+	 * Find the link_id of the Link that connects two nodes
+	 * @param link A Link object with the desired begin_node_id and end_node_id
+	 * @param timestamp The time of the map to query (since there can be multiple map versions)
+	 * @return The link_id, or Link.INVALID_LINK_ID if no match
+	 */
 	public static long lookupLinkId(Link link, long timestamp){
 		String tablename = link.getTableName();
 
@@ -1156,6 +1233,12 @@ public class DBConnection {
 		return Link.INVALID_LINK_ID;
 	}
 
+	/**
+	 * Lookup a Tile object
+	 * @param tile_x - the x-coordinate of the tile (lon / tile_size)
+	 * @param tile_y - the y-coordinate of the tile (lat / tile_size)
+	 * @return The Tile object, retrieved from the DB
+	 */
 	public static Tile lookupTile(int tile_x, int tile_y){
 		String sql = "SELECT * FROM " + (new Tile(0, 0).getTableName()) + 
 				" WHERE grid_x=" + tile_x + " AND grid_y=" + tile_y + ";";
@@ -1177,7 +1260,15 @@ public class DBConnection {
 		}
 		return null;
 	}
-
+	
+	/**
+	 * Lookup the list of UserTiles associated with a coordinate.
+	 * Recall that the UserTile tells whether a User has a copy of that Tile, is waiting for that Tile, etc...
+	 * Thus, multiple UserTiles can exist for each Tile
+	 * @param tile_x The x-coordinate of the Tile
+	 * @param tile_y The y-coordinate of the Tile
+	 * @return a List of UserTile objects corresponding to that tile location
+	 */
 	public static List<UserTile> lookupUserTiles(int tile_x, int tile_y){
 		String sql = "SELECT * FROM " + new UserTile().getTableName() +
 				" WHERE grid_x=" + tile_x + " AND grid_y=" + tile_y + ";";
@@ -1201,6 +1292,11 @@ public class DBConnection {
 
 	}
 
+	/**
+	 * Looks up a list of UserTiles for a given User
+	 * @param user_id The ID of the user in question
+	 * @return A List of UserTiles for that User
+	 */
 	public static List<UserTile> lookupUserTiles(long user_id){
 		String sql = "SELECT * FROM " + new UserTile().getTableName() +
 				" WHERE user_id=" + user_id + ";";
@@ -1224,6 +1320,13 @@ public class DBConnection {
 
 	}
 
+	/**
+	 * Looks up a single UserTile using the minimum amount of unique info
+	 * @param user_id The id of the user whom this UserTile belongs to
+	 * @param grid_x The x-coordinate of the tile
+	 * @param grid_y The y-coordinate of the tile
+	 * @return
+	 */
 	public static UserTile lookupUserTile(long user_id, int grid_x, int grid_y){
 		String sql = "SELECT * FROM " + new UserTile().getTableName() +
 				" WHERE user_id=" + user_id + " AND  grid_x=" + grid_x + " AND grid_y=" + grid_y + ";";
@@ -1247,6 +1350,12 @@ public class DBConnection {
 
 	}
 
+	/**
+	 * Deletes a UserTile from the DB
+	 * @param user_id the id of the User who owns the UserTile
+	 * @param grid_x the x-coordinate of the Tile
+	 * @param grid_y the y-cooridnate of the Tile
+	 */
 	public static void deleteUserTile(long user_id, int grid_x, int grid_y){
 		String sql = "DELETE FROM " + new UserTile().getTableName() +
 				" WHERE " + "user_id=" + user_id + " AND grid_x=" + grid_x + " AND grid_y=" + grid_y + ";";
@@ -1263,11 +1372,22 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Deletes a UserTile from the DB
+	 * @param ut A UserTile object, containing a valid user_id, grid_x and grid_y
+	 */
 	public static void deleteUserTile(UserTile ut){
 		deleteUserTile(ut.getUser_id(), ut.getGrid_x(), ut.getGrid_y());
 	}
 
 
+	/**
+	 * Get the unique set of Tiles corresponding to a list of userTiles
+	 * Since multiple UserTiles may correspond to the same Tile
+	 * This involves a query to the DB
+	 * @param userTiles A list of UserTiles
+	 * @return A list of Tiles
+	 */
 	public static List<Tile> getUniqueTiles(List<UserTile> userTiles){
 		Set<List<Integer>> tileCoordSet = new HashSet<List<Integer>>();
 
@@ -1295,6 +1415,11 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Look up the set of Tiles which have changed since the last time the User obtained it
+	 * @param user_id The ID of the user in question
+	 * @return A list of outdated Tiles
+	 */
 	public static List<Tile> getOutdatedTilesForUser(long user_id){
 		List<Tile> outdated = new LinkedList<Tile>();
 
@@ -1326,6 +1451,12 @@ public class DBConnection {
 		return outdated;
 	}
 
+	/**
+	 * A helper method for doing near-string comparison.  It ignores cases and checks for substrings in either direction
+	 * @param name
+	 * @param filter
+	 * @return
+	 */
 	private static boolean nameMatches(String name, String filter){
 		if(filter==null)
 			return true;
@@ -1340,6 +1471,10 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Returns the timestamp of the last time the DB was updated
+	 * @return A UTC timestamp
+	 */
 	public static long getLatestUpdateTime(){
 		try{
 			Statement st = con.createStatement();
@@ -1357,6 +1492,11 @@ public class DBConnection {
 		return 0;
 	}
 
+	/**
+	 * Records the given time into the DB as the last time the DB was updated.
+	 * This should be called each tim ethe DB is updated
+	 * @param time the current time
+	 */
 	public static void setLatestUpdateTime(Long time){
 		try{
 			//first figure out if this row exists or not
@@ -1382,7 +1522,10 @@ public class DBConnection {
 	}
 	
 	
-	
+	/**
+	 * Update the updated_timestamp and still_downloading fields of a Tile in the DB
+	 * @param t the Tile to update
+	 */
 	public static void updateTile(Tile t){
 		String sql = "UPDATE " + t.getTableName() + " SET " +
 				" updated_timestamp=" + t.getUpdated_timestamp() + ", still_downloading=" + t.isStill_downloading() +
@@ -1400,6 +1543,10 @@ public class DBConnection {
 		}
 	}
 
+	/**
+	 * How many Tiles are still waiting to download/process in the DB?
+	 * @return The number of Tiles still waiting to download/process
+	 */
 	public static int numTilesWaiting(){
 		String sql = "SELECT COUNT(*) FROM " + new Tile(0,0).getTableName() + " WHERE still_downloading=true";
 		sql = sql.replace("tmp_schema", getSchemaName());
