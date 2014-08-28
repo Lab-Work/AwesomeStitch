@@ -73,11 +73,11 @@ public class DBConnection {
 
 
 	/**
-	 * Establishes a connection to a local PostGreSQL database.
+	 * Establishes a connection to a PostGreSQL database.
 	 * Only once this method has been called can any SQL queries be executed.
 	 * @param dbHostName The HostName where the PostGres DB is running ("eg trafficturk.hydrolab.illinois.edu")
 	 * @param dbName	The name of the database that we are connecting to
-	 * @param userName	The username used to connect to the database, typically "postgres"
+	 * @param userName	The username used to connect to the database
 	 * @param password	The password required to login to the database
 	 */
 	private static void connect(String dbHostName, String dbName, String userName, String password){
@@ -96,6 +96,12 @@ public class DBConnection {
 	}
 
 
+	/**
+	 * Establishes a connection to a local (on this machine) PostGreSQL database.
+	 * @param dbName The name of the database that we are connecting to
+	 * @param userName The username used to connect to the database
+	 * @param password The password required to login to the database
+	 */
 	private static void connect(String dbName, String userName, String password){
 		connect("localhost", dbName, userName, password);
 	}
@@ -235,7 +241,7 @@ public class DBConnection {
 	 * Immediately inserts this object into the database - buffering is avoided altogether.
 	 * This method has a lower throughput than insertLater, but can be used for more urgent
 	 * items.
-	 * @param dbo
+	 * @param dbo - Any object that overrides the DBObject abstract class
 	 */
 	public static void insertNow(DBObject dbo){
 		//first make sure the id is unique
@@ -274,7 +280,7 @@ public class DBConnection {
 	 * Enqueues an object to be inserted into the database later.  For each type of object, a list of
 	 * uninserted objects is maintained.  When this list gets too full or flush() is called, they will
 	 * be bulk inserted into the database and the list will be emptied.
-	 * @param dbo
+	 * @param dbo - Any object that overrides the DBObject abstract class
 	 */
 	public static void insertLater(DBObject dbo){
 		String tableName = dbo.getTableName();
@@ -387,6 +393,7 @@ public class DBConnection {
 	 * Get next available id for this type of object.  The first time this method is executed,
 	 * this is performed by checking the highest-valued id in the database table.  After that, it 
 	 * simply increments the id by 1 each time.
+	 * @param dbo - Any object that overrides the DBObject class
 	 */
 	private static void updateId(DBObject dbo) {
 		//If this object has been marked with genIdOnInsert=false, we simply return instead of
@@ -456,6 +463,11 @@ public class DBConnection {
 
 
 
+	/**
+	 * A simple wrapper for SQL queries.  Errors are logged, but otherwise ignored.
+	 * @param sql - A String that represents the sql query, typically beginning with "SELECT" 
+	 * @return - A ResultSet which represents the result of the query
+	 */
 	public static ResultSet executeQuery(String sql){
 		sql = sql.replace("tmp_schema", DBConnection.getSchemaName());
 
@@ -472,6 +484,10 @@ public class DBConnection {
 		}
 	}
 	
+	/**
+	 * A simple wrapper for SQL updates.
+	 * @param sql
+	 */
 	public static void executeUpdate(String sql){
 		sql = sql.replace("tmp_schema", DBConnection.getSchemaName());
 
