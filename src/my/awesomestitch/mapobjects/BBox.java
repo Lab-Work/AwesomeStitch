@@ -1,4 +1,4 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 import java.util.HashSet;
 import java.util.Hashtable;
@@ -101,7 +101,22 @@ public class BBox {
 	 * Local data structure used during map preprocessing.  Stores the mapping from DetailLinks to processed Links.
 	 */
 	private DetailLinkMap linkMap = null;
+	
+	/**
+	 * The tile that this BBox was constructed from
+	 */
+	private Tile tile = null;
 
+
+
+	public Tile getTile() {
+		return tile;
+	}
+
+
+	public void setTile(Tile tile) {
+		this.tile = tile;
+	}
 
 
 	public BBox(double left, double top, double right, double bottom){
@@ -984,7 +999,8 @@ public class BBox {
 	public BBox preprocess(){
 		//Copy this BBox - note that the new box has Nodes and Links, even if this box has DetailNodes or DetailLinks
 		BBox processed = new BBox(this.leftLon, this.topLat, this.rightLon, this.bottomLat);
-
+		processed.setTile(this.getTile());
+		
 		IdentityHashMap<Link,Link> correspondingLink = new IdentityHashMap<Link,Link>();
 		System.out.println("Copying...");
 		for(Node n : getAllNodes()){

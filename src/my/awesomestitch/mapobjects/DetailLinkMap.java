@@ -1,4 +1,4 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 import java.util.Hashtable;
 import java.util.IdentityHashMap;

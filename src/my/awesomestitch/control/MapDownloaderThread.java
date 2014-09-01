@@ -1,4 +1,4 @@
-package my.osmstitch.control;
+package my.awesomestitch.control;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -17,11 +17,10 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.DefaultHttpClient;
 
-import my.osmstitch.mapobjects.Tile;
-import my.osmstitch.mapobjects.User;
-import my.osmstitch.mapobjects.UserTile;
-
-import my.osmstitch.control.DBConnection;
+import my.awesomestitch.control.DBConnection;
+import my.awesomestitch.mapobjects.Tile;
+import my.awesomestitch.mapobjects.User;
+import my.awesomestitch.mapobjects.UserTile;
 
 
 public class MapDownloaderThread extends Thread{
@@ -32,19 +31,27 @@ public class MapDownloaderThread extends Thread{
 	private static List<MapDownloaderThread> runningThreads = new LinkedList<MapDownloaderThread>();
 	private static Queue<Tile> toDownloadQueue = new LinkedList<Tile>();
 	private static HashSet<Tile> workingSet = new HashSet<Tile>();
-	
+
 	//private final String OSM_SERVER_NAME = "http://jxapi.openstreetmap.org/xapi/api/0.6/map?";
 	private final String OSM_SERVER_NAME = "http://overpass.osm.rambler.ru/cgi/xapi_meta?map?";
-	
-	
 
+
+	Tile tileToDownload = null;
+	public MapDownloaderThread(Tile tile){
+		tileToDownload = tile;
+		this.name = "DL " + thread_num++;
+	}
+
+
+	//TODO: Move all of this stuff into Controller.java
+	/*
 	public static boolean enqueue(Tile tile, User user, boolean force){
 
 
 		//Now, check if we already have this tile.  We will not re-download it unless force=true
 		Tile oldVersion =  DBConnection.lookupTile(tile.getGrid_x(), tile.getGrid_y());
 		if(oldVersion!=null && !force){
-			
+
 			if(oldVersion.isStill_downloading())
 				Log.v("TILE", "No need to re-download tile " + tile + " - it is already in the queue.");
 			else
@@ -64,23 +71,23 @@ public class MapDownloaderThread extends Thread{
 		synchronized(toDownloadQueue){
 			toDownloadQueue.add(tile);
 			workingSet.add(tile);
-			
+
 			tile.setStill_downloading(true);
 			tile.setCreated_timestamp(System.currentTimeMillis());
-			
+
 			//Create a new UserTile - records that the user has ordered this tile in the DB
 			//Later, this information can be used to determine whether a given user has other tiles in the queue
 			if(user!=null){
 				UserTile ut = new UserTile(user.getUser_id(), tile.getGrid_x(), tile.getGrid_y());
 				ut.setOwned_timestamp(UserTile.DNE);
 				ut.setOrdered_timestamp(System.currentTimeMillis());
-				
+
 				//If this UserTile already exists in the DB, remove it - it needs to be replaced
 				DBConnection.deleteUserTile(ut);
 				//Add this order to the DB
 				DBConnection.insertNow(ut);
 			}
-			
+
 			if(oldVersion==null)
 				DBConnection.insertNow(tile);
 			else
@@ -107,10 +114,10 @@ public class MapDownloaderThread extends Thread{
 		enqueue(tile, user, false);
 	}
 
-	
-	
-	
-	
+
+
+
+
 	public static int enqueueSquareOfTiles(int tile_x, int tile_y, int tile_radius, User user, boolean force){
 		int numEnqueued = 0;
 		//Iterate through the square around this tile
@@ -122,34 +129,31 @@ public class MapDownloaderThread extends Thread{
 					numEnqueued += 1;
 			}
 		}
-		
+
 		return numEnqueued;
-		
+
 	}
-	
-	
+
+
 public static int enqueueSquare(double center_lon, double center_lat, int tile_radius, User user, boolean force){
-		
+
 		//Create the center tile as a reference point
 		Tile centerTile = new Tile(center_lon, center_lat);
-		
+
 		return enqueueSquareOfTiles(centerTile.getGrid_x(), centerTile.getGrid_y(), tile_radius, user, force);
 	}
-	
-	
-	
-	
-	
-	
+
+
+
+
+
+
 	public static void doneProcessing(Tile tile){
 		synchronized(toDownloadQueue){
 			workingSet.remove(tile);
 		}
 	}
-
-	public MapDownloaderThread(){
-		this.name = "DL " + thread_num++;
-	}
+	 */
 
 	public void echo(String str){
 		Log.v("TILE", name + " : " + str);
@@ -160,49 +164,39 @@ public static int enqueueSquare(double center_lon, double center_lat, int tile_r
 	@Override
 	public void run(){
 
-		echo("Starting.");
+		echo("Processing " + tileToDownload);
 
-		boolean stillWorkToDo = true;
-		//This thread runs until there are no more tiles to download
-		do{
-			//Retrieve the next tile if there are still tiles in the queue
-			Tile nextTile = null;
+		//If we were able to get a tile, it must be downloaded and marked for processing
+		if(tileToDownload!=null){
+			try{
+				//Mark this tile as currently downloading
+				synchronized(Controller.dbTileLock){
+					tileToDownload.setDownload_status(Tile.IN_PROGRESS);
+					DBConnection.updateTile(tileToDownload);
+				}
 
-			synchronized(toDownloadQueue){
-				if(toDownloadQueue.isEmpty())
-					stillWorkToDo = false;
-				else{
-					nextTile = toDownloadQueue.poll();
+				echo("Downloading " + tileToDownload);
+				downloadTile(tileToDownload);
+				//Tile successfully downloaded.
+
+				//Mark this tile as finished downloading
+				synchronized(Controller.dbTileLock){
+					tileToDownload.setDownload_status(Tile.DONE);
+					DBConnection.updateTile(tileToDownload);
+				}
+
+			}
+			catch(IOException e){
+				//Tile failed to download.  Put it back into the waiting state.
+				//This means we will try again later.
+				echo("Failed " + tileToDownload);
+				synchronized(Controller.dbTileLock){
+					tileToDownload.setDownload_status(Tile.WAITING);
+					DBConnection.updateTile(tileToDownload);
 				}
 			}
+		}
 
-			echo("got " + nextTile);
-
-			//If we were able to get a tile, it must be downloaded and marked for processing
-			if(nextTile!=null){
-				try{
-					echo("Downloading " + nextTile);
-					downloadTile(nextTile);
-					//Tile successfully downloaded.
-					//Now we add it to the processing queue
-					MapProcessorThread.enqueue(nextTile);
-					echo("Success " + nextTile);
-				}
-				catch(IOException e){
-					//Tile failed to download.  Add back to the queue so we try again later.
-					echo("Failed " + nextTile);
-					synchronized(toDownloadQueue){
-						toDownloadQueue.add(nextTile);
-					}
-				}
-			}
-
-			echo("Still have work to do? " + stillWorkToDo);
-		}while(stillWorkToDo);
-
-		//Remove thread from list of running threads.
-		runningThreads.remove(this);
-		echo("Terminating.");
 	}
 
 	private void downloadTile(Tile tile) throws IOException{

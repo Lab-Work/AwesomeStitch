@@ -1,4 +1,4 @@
-package my.osmstitch.control;
+package my.awesomestitch.control;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -23,17 +23,17 @@ import org.postgis.Polygon;
 import org.postgresql.PGConnection;
 import org.postgresql.copy.CopyManager;
 
-import my.osmstitch.mapobjects.BBox;
-import my.osmstitch.mapobjects.CountingNode;
-import my.osmstitch.mapobjects.DBObject;
-import my.osmstitch.mapobjects.DetailLink;
-import my.osmstitch.mapobjects.DetailLinkMapping;
-import my.osmstitch.mapobjects.DetailNode;
-import my.osmstitch.mapobjects.Link;
-import my.osmstitch.mapobjects.Node;
-import my.osmstitch.mapobjects.Tile;
-import my.osmstitch.mapobjects.User;
-import my.osmstitch.mapobjects.UserTile;
+import my.awesomestitch.mapobjects.BBox;
+import my.awesomestitch.mapobjects.CountingNode;
+import my.awesomestitch.mapobjects.DBObject;
+import my.awesomestitch.mapobjects.DetailLink;
+import my.awesomestitch.mapobjects.DetailLinkMapping;
+import my.awesomestitch.mapobjects.DetailNode;
+import my.awesomestitch.mapobjects.Link;
+import my.awesomestitch.mapobjects.Node;
+import my.awesomestitch.mapobjects.Tile;
+import my.awesomestitch.mapobjects.User;
+import my.awesomestitch.mapobjects.UserTile;
 
 
 
@@ -205,7 +205,7 @@ public class DBConnection {
 		executeUpdate("CREATE TABLE tmp_schema.links ( link_id BIGINT, begin_node_id BIGINT NOT NULL, end_node_id BIGINT NOT NULL, begin_angle NUMERIC(5,2), end_angle NUMERIC(5,2), street_length NUMERIC(8,3), osm_name CHARACTER VARYING(100), osm_class CHARACTER VARYING(30), osm_way_id BIGINT, geom geometry('LINESTRING', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (link_id, birth_timestamp), UNIQUE (begin_node_id, end_node_id, birth_timestamp) );");
 		executeUpdate("CREATE TABLE tmp_schema.detail_links ( link_id BIGINT, proc_link_id BIGINT, begin_node_id BIGINT NOT NULL, end_node_id BIGINT NOT NULL, begin_angle NUMERIC(5,2), end_angle NUMERIC(5,2), street_length NUMERIC(8,3), osm_name CHARACTER VARYING(100), osm_class CHARACTER VARYING(30), osm_way_id BIGINT, geom geometry('LINESTRING', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (link_id, birth_timestamp) );");
 		executeUpdate("CREATE TABLE tmp_schema.detail_link_mapping ( link_id BIGINT, detail_link_id BIGINT, osm_way_id BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT );");
-		executeUpdate("CREATE TABLE tmp_schema.tiles ( grid_x INTEGER, grid_y INTEGER, left_lon NUMERIC, bottom_lat NUMERIC, created_timestamp BIGINT, updated_timestamp BIGINT, still_downloading BOOLEAN, geom geometry('POLYGON', 4326) );");
+		executeUpdate("CREATE TABLE tmp_schema.tiles ( grid_x INTEGER, grid_y INTEGER, left_lon NUMERIC, bottom_lat NUMERIC, created_timestamp BIGINT, updated_timestamp BIGINT, download_status BOOLEAN, detailed_map_status BOOLEAN, processed_map_status BOOLEAN, geom geometry('POLYGON', 4326) );");
 		executeUpdate("CREATE TABLE tmp_schema.user_tiles ( user_id BIGINT, grid_x INTEGER, grid_y INTEGER, ordered_timestamp BIGINT, owned_timestamp BIGINT, UNIQUE (user_id, grid_x, grid_y) );");
 		executeUpdate("CREATE TABLE tmp_schema.users ( user_id BIGINT, username CHARACTER VARYING(100) NOT NULL, password CHARACTER VARYING(100), email CHARACTER VARYING(100), phone_number CHARACTER VARYING(40), first_name CHARACTER VARYING(100), last_name CHARACTER VARYING(100), UNIQUE (username), CONSTRAINT users_pkey PRIMARY KEY (user_id) );");
 		executeUpdate("CREATE TABLE tmp_schema.extravars (name CHARACTER VARYING, val CHARACTER VARYING, UNIQUE(name) );");
@@ -972,7 +972,8 @@ public class DBConnection {
 
 		//Fetch the relevant big tile from the DB
 		Tile tile = lookupTile(big_tile_x, big_tile_y);
-		if(tile!=null && !tile.isStill_downloading()){
+		if(tile!=null && tile.getProcessed_map_status()==Tile.DONE){
+			
 			//If this tile exists, and it is done being processed, do a BBox query for the rectangle that it defines
 			long NOW = System.currentTimeMillis();
 
@@ -1528,7 +1529,8 @@ public class DBConnection {
 	 */
 	public static void updateTile(Tile t){
 		String sql = "UPDATE " + t.getTableName() + " SET " +
-				" updated_timestamp=" + t.getUpdated_timestamp() + ", still_downloading=" + t.isStill_downloading() +
+				" updated_timestamp=" + t.getUpdated_timestamp() + ", download_status=" + t.getDownload_status() +
+				", detailed_map_status=" + t.getDetailed_map_status() + ", processed_map_status=" + t.getProcessed_map_status() +
 				" WHERE grid_x=" + t.getGrid_x() + " AND grid_y=" + t.getGrid_y() + ";";
 		sql = sql.replace("tmp_schema", getSchemaName());
 

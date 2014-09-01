@@ -1,4 +1,4 @@
-package my.osmstitch.control;
+package my.awesomestitch.control;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -8,10 +8,10 @@ import java.util.Hashtable;
 import java.util.LinkedList;
 import java.util.List;
 
-import my.osmstitch.mapobjects.BBox;
-import my.osmstitch.mapobjects.CountingNode;
-import my.osmstitch.mapobjects.Link;
-import my.osmstitch.mapobjects.Node;
+import my.awesomestitch.mapobjects.BBox;
+import my.awesomestitch.mapobjects.CountingNode;
+import my.awesomestitch.mapobjects.Link;
+import my.awesomestitch.mapobjects.Node;
 
 
 //import my.traffic.turk.osmparser.OSMParser;

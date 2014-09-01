@@ -1,4 +1,4 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

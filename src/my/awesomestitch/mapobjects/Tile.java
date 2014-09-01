@@ -1,10 +1,10 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import my.osmstitch.control.Log;
-import my.osmstitch.control.MapDownloaderThread;
+import my.awesomestitch.control.Log;
+import my.awesomestitch.control.MapDownloaderThread;
 
 import org.postgis.LinearRing;
 import org.postgis.PGgeometryLW;
@@ -12,29 +12,101 @@ import org.postgis.Point;
 import org.postgis.Polygon;
 
 public class Tile extends DBObject {
-	int grid_x;
-	int grid_y;
-
-	double left_lon;
-	double bottom_lat;
-
-	long created_timestamp;
-	long updated_timestamp;
-
-	Polygon geom;
-
+	
+	/**
+	 * Size of map tiles in degrees lat/lon.  Big tiles are downloaded from OSM and saved in the DB.
+	 */
 	public static final double BIG_TILE_SIZE = .1;
+	
+	/**
+	 * Size of map tiles in degrees lat/lon.  Small tiles should evenly divide into big tiles,
+	 * and can be conveniently queried via DBConnection.tileQuery()
+	 */
 	public static final double SMALL_TILE_SIZE = .02;
+	
+	/**
+	 * Tiles should be immediately pushed to DB.
+	 */
 	public static final int BUFFER_SIZE = 1;
+	
+	/**
+	 * Folder in which to save temporary OSM files.
+	 */
 	public static final String MAP_DIR = "tmp_map";
 	
-	boolean still_downloading = false;
+	/**
+	 * A constant that specifies the Tile is waiting to be processed.
+	 */
+	public static final int WAITING = 0;
 	
-	boolean force = false;
+	/**
+	 * A constant that specifies the Tile is currently being processed
+	 */
+	public static final int IN_PROGRESS = 1;
+	
+	/**
+	 * A constant that specifies the Tile is done being processed.
+	 */
+	public static final int DONE = 2;
+	
+	/**
+	 * The x-cordinate of this tile, corresponds to longitude
+	 */
+	int grid_x;
+	
+	/**
+	 * The y-coordinate of this tile, corresponds to latitude.
+	 */
+	int grid_y;
+
+	/**
+	 * The longitude of the left part of this tile - this is a function of grid_x (and vice versa)
+	 */
+	double left_lon;
+	
+	/**
+	 * The latitude of the bottom of this tile - this is a function of grid_y (and vice versa)
+	 */
+	double bottom_lat;
+
+	/**
+	 * The time this tile was created
+	 */
+	long created_timestamp;
+	
+	/**
+	 * The time this tile was last updated
+	 */
+	long updated_timestamp;
+
+	/**
+	 * Stores the geometrical properties of this Tile
+	 */
+	Polygon geom;
 	
 
+	boolean force = false;
+	
+	/**
+	 * Indicates whether the Tile is downloading.  Can be WAITING, IN_PROGRESS, or DONE
+	 */
+	int download_status = WAITING;
+	
+	/**
+	 * Indicates whether the detailed map of this Tile is processing.  Can be WAITING, IN_PROGRESS, or DONE
+	 */
+	int detailed_map_status = WAITING;
+	
+	/**
+	 * Indicates whether the processed map of this Tile is processing.  Can be WAITING, IN_PROGRESS, or DONE
+	 */
+	int processed_map_status = WAITING;
 	
 	
+	/**
+	 * Computes the PostGIS geometry of this tile.
+	 * @return A 4-vertix Polygon representing this Tile
+	 */
 	private Polygon constructGeom(){
 		Point topLeftCorner = new Point(left_lon, bottom_lat + BIG_TILE_SIZE);
 		Point topRightCorner = new Point(left_lon + BIG_TILE_SIZE, bottom_lat + BIG_TILE_SIZE);
@@ -48,7 +120,11 @@ public class Tile extends DBObject {
 		return box;
 	}
 	
-	
+	/**
+	 * Simple constructor for a Tile object
+	 * @param x The x-coordinate of the tile
+	 * @param y The y-coordinate of the tile
+	 */
 	public Tile(int x, int y){
 		this.grid_x = x;
 		this.grid_y = y;
@@ -61,8 +137,8 @@ public class Tile extends DBObject {
 	/**
 	 * Constructs a big tile that covers a given longitude, latitude.  These tiles have discrete x and y coordinates,
 	 * where x corresponds to the longitude and y corresponds to the latitude.
-	 * @param lon
-	 * @param lat
+	 * @param lon The desired left-longitude of the tile
+	 * @param lat The desired bottom-latitude of the tile
 	 */
 	public Tile(double lon, double lat){
 		this.grid_x = (int) Math.floor(lon / BIG_TILE_SIZE);
@@ -74,6 +150,11 @@ public class Tile extends DBObject {
 	}
 
 
+	/**
+	 * Constructs a Tile object from a ResultSet returned by the DB.
+	 * The result should come from a statement like "SELECT * FROM tmp_schema.tiles WHERE ..."
+	 * @param rs
+	 */
 	public Tile(ResultSet rs){
 		try{
 			this.grid_x = rs.getInt("grid_x");
@@ -84,7 +165,10 @@ public class Tile extends DBObject {
 			
 			this.created_timestamp = rs.getLong("created_timestamp");
 			this.updated_timestamp = rs.getLong("updated_timestamp");
-			this.still_downloading = rs.getBoolean("still_downloading");
+			this.download_status = rs.getInt("download_status");
+			this.detailed_map_status = rs.getInt("detailed_map_status");
+			this.processed_map_status = rs.getInt("processed_map_status");
+			
 			
 			this.geom = constructGeom();
 		}
@@ -104,8 +188,7 @@ public class Tile extends DBObject {
 
 	@Override
 	public String getTableName() {
-		// TODO Auto-generated method stub
-		return "tmp_schema.tiles";
+				return "tmp_schema.tiles";
 	}
 
 	@Override
@@ -116,10 +199,9 @@ public class Tile extends DBObject {
 
 	@Override
 	public String getInsertStatement() {
-		// TODO Auto-generated method stub
-		String sql = "INSERT INTO " + getTableName() + " (grid_x, grid_y, left_lon, bottom_lat, created_timestamp, updated_timestamp, still_downloading, geom)"
+		String sql = "INSERT INTO " + getTableName() + " (grid_x, grid_y, left_lon, bottom_lat, created_timestamp, updated_timestamp, download_status, detailed_map_status, processed_map_status, geom)"
 				+ " VALUES(" + grid_x + "," + grid_y + "," + left_lon + "," + bottom_lat + "," + created_timestamp + "," + updated_timestamp
-				+ ", " + still_downloading + ", 'SRID=4326;" + geom.toString() + "');";
+				+ ", " + download_status + "," + detailed_map_status + "," + processed_map_status + ", 'SRID=4326;" + geom.toString() + "');";
 		return sql;
 	}
 
@@ -135,9 +217,8 @@ public class Tile extends DBObject {
 		PGgeometryLW lw = new PGgeometryLW(geom);
 		String geomString = lw.getValue();
 
-		// TODO Auto-generated method stub
 		String csv = grid_x + "|" + grid_y + "|" + left_lon + "|"  + bottom_lat + "|" + created_timestamp + "|" + updated_timestamp + "|"
-		+ still_downloading + "|" + geomString + "\n";
+		+ download_status + "|" + detailed_map_status + "|" + processed_map_status + "|" + geomString + "\n";
 		return csv;
 	}
 
@@ -149,7 +230,6 @@ public class Tile extends DBObject {
 
 	@Override
 	public int getServerBufferSize() {
-		// TODO Auto-generated method stub
 		return BUFFER_SIZE;
 	}
 
@@ -234,16 +314,39 @@ public class Tile extends DBObject {
 	}
 
 
-	public boolean isStill_downloading() {
-		return still_downloading;
+
+	public int getDownload_status() {
+		return download_status;
 	}
 
 
-	public void setStill_downloading(boolean still_downloading) {
-		this.still_downloading = still_downloading;
+	public void setDownload_status(int download_status) {
+		this.download_status = download_status;
 	}
 
 
+	public int getDetailed_map_status() {
+		return detailed_map_status;
+	}
+
+
+	public void setDetailed_map_status(int detailed_map_status) {
+		this.detailed_map_status = detailed_map_status;
+	}
+
+
+	public int getProcessed_map_status() {
+		return processed_map_status;
+	}
+
+
+	public void setProcessed_map_status(int processed_map_status) {
+		this.processed_map_status = processed_map_status;
+	}
+
+
+	
+	
 
 
 

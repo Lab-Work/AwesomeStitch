@@ -1,11 +1,10 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import my.osmstitch.control.Log;
-
-import my.osmstitch.mapobjects.DBObject;
+import my.awesomestitch.control.Log;
+import my.awesomestitch.mapobjects.DBObject;
 
 public class UserTile extends DBObject{
 	

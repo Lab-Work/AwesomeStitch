@@ -1,11 +1,11 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 import java.io.Serializable;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import my.osmstitch.control.Direction;
-import my.osmstitch.control.Log;
+import my.awesomestitch.control.Direction;
+import my.awesomestitch.control.Log;
 
 import org.postgis.Geometry;
 import org.postgis.LineString;

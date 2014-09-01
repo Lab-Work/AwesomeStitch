@@ -1,4 +1,4 @@
-package my.osmstitch.control;
+package my.awesomestitch.control;
 
 import java.io.IOException;
 import java.text.DateFormat;
@@ -18,11 +18,11 @@ import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 
-import my.osmstitch.mapobjects.Tile;
-
-import my.osmstitch.control.DBConnection;
-import my.osmstitch.mapobjects.User;
-import my.osmstitch.mapobjects.UserTile;
+import my.awesomestitch.control.DBConnection;
+import my.awesomestitch.mapobjects.BBox;
+import my.awesomestitch.mapobjects.Tile;
+import my.awesomestitch.mapobjects.User;
+import my.awesomestitch.mapobjects.UserTile;
 
 
 public class MapProcessorThread extends Thread {
@@ -96,8 +96,13 @@ public class MapProcessorThread extends Thread {
 				coordinates[1] = nextTile.getBottom_lat() + Tile.BIG_TILE_SIZE;
 				coordinates[2] = nextTile.getLeft_lon() + Tile.BIG_TILE_SIZE;
 				coordinates[3] = nextTile.getBottom_lat();
-				long NOW = OSMParser.insertBoundingBox(nextTile.fileName(), coordinates, "AUTO-GENERATED");
+				//long NOW = OSMParser.insertBoundingBox(nextTile.fileName(), coordinates, "AUTO-GENERATED");
 
+				//Parse the file
+				BBox newDetailedMap = ParserThread.parseBBox(nextTile.fileName(), coordinates);
+				newDetailedMap.setTile(nextTile);
+				
+				
 				//Inform MapDownloaderThread that this Tile is done.  It can now be used
 				MapDownloaderThread.doneProcessing(nextTile);
 

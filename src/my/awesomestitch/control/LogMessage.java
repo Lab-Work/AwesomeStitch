@@ -1,4 +1,4 @@
-package my.osmstitch.control;
+package my.awesomestitch.control;
 
 public class LogMessage {
 	private long timestamp;

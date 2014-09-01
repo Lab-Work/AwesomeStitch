@@ -1,8 +1,7 @@
-package my.osmstitch.control;
+package my.awesomestitch.mapobjects;
 
 import java.util.ArrayList;
 
-import my.osmstitch.mapobjects.Node;
 
 
 

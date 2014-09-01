@@ -1,4 +1,4 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -7,7 +7,8 @@ import java.sql.Statement;
 
 
 
-import my.osmstitch.control.Log;
+
+import my.awesomestitch.control.Log;
 
 import org.postgis.Geometry;
 import org.postgis.PGgeometryLW;

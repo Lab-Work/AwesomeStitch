@@ -1,4 +1,4 @@
-package my.osmstitch.mapobjects;
+package my.awesomestitch.mapobjects;
 
 
 public class ChangeLog extends DBObject {

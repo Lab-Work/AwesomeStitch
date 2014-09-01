@@ -1,4 +1,4 @@
-package my.osmstitch.control;
+package my.awesomestitch.control;
 
 
 public class Direction {
@@ -91,6 +91,14 @@ public class Direction {
 	}
 	
 	
+	/**
+	 * Returns the angle of travel between two points (measured clockwise from North)
+	 * @param longitude1 The longitude of the start position
+	 * @param latitude1 The latitude of the start position
+	 * @param longitude2 The longitude of the end position
+	 * @param latitude2 The latitude of the end position
+	 * @return
+	 */
 	public static double azimuth(double longitude1, double latitude1, double longitude2, double latitude2){
 		double lat1 = Math.toRadians(latitude1);
 		double lat2 = Math.toRadians(latitude2);

@@ -1,4 +1,4 @@
-package my.osmstitch.control;
+package my.awesomestitch.control;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
