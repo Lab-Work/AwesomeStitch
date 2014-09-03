@@ -35,7 +35,7 @@ public class MapProcessorThread extends Thread {
 	String name;
 	static int thread_num = 1;
 	Tile tileToProcess = null;
-
+	boolean isComplete = false;
 
 
 
@@ -43,6 +43,7 @@ public class MapProcessorThread extends Thread {
 
 	public MapProcessorThread(Tile tile){
 		this.name = "PC " + thread_num++;
+		this.tileToProcess = tile;
 	}
 
 	public void echo(String str){
@@ -57,8 +58,13 @@ public class MapProcessorThread extends Thread {
 
 		echo("got " + tileToProcess);
 
+		synchronized(Controller.lock){
+			tileToProcess.setProcessed_map_status(Tile.IN_PROGRESS);
+			DBConnection.updateTile(tileToProcess);
+		}
+		
+		
 		//If we were able to get a tile, it must be downloaded and marked for processing
-		if(tileToProcess!=null){
 			//Get the coordinates of this tile and the current time
 			double left = tileToProcess.getLeft_lon();
 			double top = tileToProcess.getBottom_lat() + Tile.BIG_TILE_SIZE;
@@ -71,15 +77,30 @@ public class MapProcessorThread extends Thread {
 
 			//Perform the preprocessing - this is a fairly heavy computation
 			BBox newProcessedMap = newDetailedMap.preprocess();
+			newProcessedMap.setTile(tileToProcess);
 
 			//Add the processed tile to the list of DB updates
-			synchronized(Controller.dbTileLock){
+			synchronized(Controller.lock){
 				DBResolverThread.enqueueProcessedBBox(newProcessedMap);
 			}
 
 
 
-		}
+
+		//Mark this thread as complete and start any new threads if necessary
+		isComplete = false;
+		Controller.startThreadsIfNecessary();
+	}
+
+
+	/**
+	 * Tells whether the thread is finished running.  This can happen due to a successful run or an error.
+	 * @return True if the thread completed successfully or failed, False if it is still running
+	 */
+	public boolean isFinished(){
+		if(isComplete)
+			return true;
+		return !super.isAlive();
 	}
 
 	/*

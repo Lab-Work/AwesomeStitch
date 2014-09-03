@@ -59,6 +59,7 @@ import org.postgresql.geometric.PGpoint;
 public class ParserThread extends Thread{
 
 	Tile tileToParse;
+	boolean isComplete = false;
 
 	public ParserThread(Tile tile){
 		tileToParse = tile;
@@ -206,7 +207,7 @@ public class ParserThread extends Thread{
 		}
 
 		//At this point, the tmp_bbox is no longer useful
-		detail_bbox = null;
+		tmp_bbox = null;
 
 		Log.v("OSM", "Processing " + way_list.size() + " ways.");
 
@@ -303,7 +304,7 @@ public class ParserThread extends Thread{
 	@Override
 	public void run(){
 		//Mark this tile as currently processing
-		synchronized(Controller.dbTileLock){
+		synchronized(Controller.lock){
 			tileToParse.setDetailed_map_status(Tile.IN_PROGRESS);
 			DBConnection.updateTile(tileToParse);
 		}
@@ -315,21 +316,32 @@ public class ParserThread extends Thread{
 
 		//Parse the file
 		BBox parsedBox = parseBBox(fileName, coordinates);
+		parsedBox.setTile(tileToParse);
 
 		//Add the newly created BBox to the queue of DB updates
-		synchronized(Controller.dbTileLock){
+		synchronized(Controller.lock){
 			DBResolverThread.enqueueDetailedBBox(parsedBox);
 		}
 
 
 
-
+		//Mark this thread as complete and start any new threads if necessary
+		isComplete = false;
+		Controller.startThreadsIfNecessary();
 
 
 	}
 
 
-
+	/**
+	 * Tells whether the thread is finished running.  This can happen due to a successful run or an error.
+	 * @return True if the thread completed successfully or failed, False if it is still running
+	 */
+	public boolean isFinished(){
+		if(isComplete)
+			return true;
+		return !super.isAlive();
+	}
 
 
 

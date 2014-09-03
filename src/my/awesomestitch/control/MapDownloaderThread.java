@@ -37,123 +37,13 @@ public class MapDownloaderThread extends Thread{
 
 
 	Tile tileToDownload = null;
+	boolean isComplete = false;
+
 	public MapDownloaderThread(Tile tile){
 		tileToDownload = tile;
 		this.name = "DL " + thread_num++;
 	}
 
-
-	//TODO: Move all of this stuff into Controller.java
-	/*
-	public static boolean enqueue(Tile tile, User user, boolean force){
-
-
-		//Now, check if we already have this tile.  We will not re-download it unless force=true
-		Tile oldVersion =  DBConnection.lookupTile(tile.getGrid_x(), tile.getGrid_y());
-		if(oldVersion!=null && !force){
-
-			if(oldVersion.isStill_downloading())
-				Log.v("TILE", "No need to re-download tile " + tile + " - it is already in the queue.");
-			else
-				Log.v("TILE", "No need to re-download tile " + tile + " - we already have it.  Use force=true to update this tile.");
-			//Return false - this tile does not need to be downloaded/processed
-			return false;
-		}
-
-		if(oldVersion==null)
-			tile.setForce(false); // No need to force a tile that we don't have. Forcing is only required to overwrite existing tiles
-		else
-			tile.setForce(true);
-
-
-		//Add this tile to the list of tiles which still need to be downloaded
-		//Also add it to the workingSet - it will be removed once downloading and processing is complete
-		synchronized(toDownloadQueue){
-			toDownloadQueue.add(tile);
-			workingSet.add(tile);
-
-			tile.setStill_downloading(true);
-			tile.setCreated_timestamp(System.currentTimeMillis());
-
-			//Create a new UserTile - records that the user has ordered this tile in the DB
-			//Later, this information can be used to determine whether a given user has other tiles in the queue
-			if(user!=null){
-				UserTile ut = new UserTile(user.getUser_id(), tile.getGrid_x(), tile.getGrid_y());
-				ut.setOwned_timestamp(UserTile.DNE);
-				ut.setOrdered_timestamp(System.currentTimeMillis());
-
-				//If this UserTile already exists in the DB, remove it - it needs to be replaced
-				DBConnection.deleteUserTile(ut);
-				//Add this order to the DB
-				DBConnection.insertNow(ut);
-			}
-
-			if(oldVersion==null)
-				DBConnection.insertNow(tile);
-			else
-				DBConnection.updateTile(tile);
-		}
-
-		//If needed, start another thread to handle downloading
-		synchronized(runningThreads){
-			if(runningThreads.size() < MAX_DOWNLOAD_THREADS){
-				MapDownloaderThread thread = new MapDownloaderThread();
-				//Track this thread in the runningThreads set
-				runningThreads.add(thread);
-				thread.start();
-			}
-		}
-
-		Log.v("TILE", "Enqueued tile " + tile +"");
-
-		//Return true - we need to wait on this tile
-		return true;
-	}
-
-	public static void enqueue(Tile tile, User user){
-		enqueue(tile, user, false);
-	}
-
-
-
-
-
-	public static int enqueueSquareOfTiles(int tile_x, int tile_y, int tile_radius, User user, boolean force){
-		int numEnqueued = 0;
-		//Iterate through the square around this tile
-		for(int x = tile_x - tile_radius; x <= tile_x + tile_radius; x++){
-			for(int y = tile_y - tile_radius; y <= tile_y + tile_radius; y++){
-				Tile tile = new Tile(x,y);
-				boolean result = enqueue(tile, user, force);
-				if(result)
-					numEnqueued += 1;
-			}
-		}
-
-		return numEnqueued;
-
-	}
-
-
-public static int enqueueSquare(double center_lon, double center_lat, int tile_radius, User user, boolean force){
-
-		//Create the center tile as a reference point
-		Tile centerTile = new Tile(center_lon, center_lat);
-
-		return enqueueSquareOfTiles(centerTile.getGrid_x(), centerTile.getGrid_y(), tile_radius, user, force);
-	}
-
-
-
-
-
-
-	public static void doneProcessing(Tile tile){
-		synchronized(toDownloadQueue){
-			workingSet.remove(tile);
-		}
-	}
-	 */
 
 	public void echo(String str){
 		Log.v("TILE", name + " : " + str);
@@ -170,14 +60,19 @@ public static int enqueueSquare(double center_lon, double center_lat, int tile_r
 		if(tileToDownload!=null){
 			try{
 				//Mark this tile as currently downloading
-				synchronized(Controller.dbTileLock){
+				synchronized(Controller.lock){
 					tileToDownload.setDownload_status(Tile.IN_PROGRESS);
 					DBConnection.updateTile(tileToDownload);
 				}
 
 				echo("Downloading " + tileToDownload);
 				downloadTile(tileToDownload);
-				//Tile successfully downloaded.
+				
+				//Tile successfully downloaded.  Mark it as complete
+				synchronized(Controller.lock){
+					tileToDownload.setDownload_status(Tile.DONE);
+					DBConnection.updateTile(tileToDownload);
+				}
 
 
 			}
@@ -185,13 +80,27 @@ public static int enqueueSquare(double center_lon, double center_lat, int tile_r
 				//Tile failed to download.  Put it back into the waiting state.
 				//This means we will try again later.
 				echo("Failed " + tileToDownload);
-				synchronized(Controller.dbTileLock){
+				synchronized(Controller.lock){
 					tileToDownload.setDownload_status(Tile.WAITING);
 					DBConnection.updateTile(tileToDownload);
 				}
 			}
 		}
 
+		//Mark this thread as complete and start any new threads if necessary
+		isComplete = false;
+		Controller.startThreadsIfNecessary();
+
+	}
+
+	/**
+	 * Tells whether the thread is finished running.  This can happen due to a successful run or an error.
+	 * @return True if the thread completed successfully or failed, False if it is still running
+	 */
+	public boolean isFinished(){
+		if(isComplete)
+			return true;
+		return !super.isAlive();
 	}
 
 	private void downloadTile(Tile tile) throws IOException{

@@ -18,22 +18,22 @@ import my.awesomestitch.mapobjects.Tile;
 
 public class DBResolverThread extends Thread {
 	public static final long DISTANT_FUTURE = 40000000000000L;
-	private static DBResolverThread currentRunningThread = null;
 
-	
-	
+
+
 	public static final int MAX_QUEUE_SIZE=10;
 	/**
 	 * A Queue of detailed BBoxes which need to be added to the DB
 	 */
 	private static Queue<BBox> detailedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
-	
+
 	/**
 	 * A Queue of processed BBoxes which need to be added to the DB
 	 */
 	private static Queue<BBox> processedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
-	
-	
+
+	private boolean isComplete = false;
+
 
 	/**
 	 * Helper method - tells whether two nodes have identical properties. This is useful because we don't want to make a new version of a node
@@ -89,9 +89,9 @@ public class DBResolverThread extends Thread {
 		//System.out.println("length identical");
 
 		if(link1.getOsm_name()==null && link2.getOsm_name()==null) return true;
-		
+
 		if(link1.getOsm_name()==null || link2.getOsm_name()==null) return true;
-		
+
 		if(!link1.getOsm_name().equals(link2.getOsm_name())) return false;
 		//System.out.println("name identical");
 
@@ -349,7 +349,7 @@ public class DBResolverThread extends Thread {
 	public static void enqueueDetailedBBox(BBox bbox){
 		detailedBBoxes.add(bbox);
 	}
-	
+
 	/**
 	 * Add a processed BBox into the queue of boxes to be resolved in the DB
 	 * And start a DBResolverThread if necessary
@@ -359,75 +359,99 @@ public class DBResolverThread extends Thread {
 		processedBBoxes.add(bbox);
 	}
 	
+	/**
+	 * Tells whether there are any BBoxes in either queue that need to be processed
+	 * @return True if either queue has elements in it, False if both are empty
+	 */
+	public static boolean hasBBoxesInQueue(){
+		return detailedBBoxes.size() > 0 || processedBBoxes.size() > 0;
+	}
+
 	public void run(){
 
-			//This thread runs as long as there are still detailedBBoxes or processedBBoxes to add to the DB
-			
-			if(detailedBBoxes.size() > 0){
-				//Detailed BBoxes are given preference - their queue must be empty before processed BBoxes are even considered
-				//This avoids race conditions and also decreases memory usage
-				long NOW = System.currentTimeMillis();
-				
-				//Get the newly parsed detailedMap from the queue
-				BBox newDetailedMap = detailedBBoxes.remove();
+		//This thread runs as long as there are still detailedBBoxes or processedBBoxes to add to the DB
 
-				//1) query the database for the current version of the map within the region spanned by the OSM file
-				//If this is the first time this tile is added, this may contain a few links that go over the border, etc...
-				long start_time = System.currentTimeMillis();
-				BBox oldDetailedMap = DBConnection.boundingBoxQuery(newDetailedMap.leftLon, newDetailedMap.topLat, newDetailedMap.rightLon, newDetailedMap.bottomLat, NOW, false, true, true, false);
+		if(detailedBBoxes.size() > 0){
+			//Detailed BBoxes are given preference - their queue must be empty before processed BBoxes are even considered
+			//This avoids race conditions and also decreases memory usage
+			long NOW = System.currentTimeMillis();
 
-				String fileName = "";
-				String description = "";
-				Tile tile = newDetailedMap.getTile();
-				if(tile!=null){
-					fileName = tile.fileName();
-					description = "Update of " + fileName;
-				}
-				
-				//2) Compare our current DB version of the map against the new version loaded from the OSM file
-				//TODO: Make sure references from detailedLink -> processedLink are properly updated
-				resolveDifferencesInDB(newDetailedMap, oldDetailedMap, start_time, fileName, description, false);
-				
-				//Mark the tile as complete
-				synchronized(Controller.dbTileLock){
-					tile.setDetailed_map_status(Tile.DONE);
-					DBConnection.updateTile(tile);
-				}
+			//Get the newly parsed detailedMap from the queue
+			BBox newDetailedMap = detailedBBoxes.remove();
+
+			//1) query the database for the current version of the map within the region spanned by the OSM file
+			//If this is the first time this tile is added, this may contain a few links that go over the border, etc...
+			long start_time = System.currentTimeMillis();
+			BBox oldDetailedMap = DBConnection.boundingBoxQuery(newDetailedMap.leftLon, newDetailedMap.topLat, newDetailedMap.rightLon, newDetailedMap.bottomLat, NOW, false, true, true, false);
+
+			String fileName = "";
+			String description = "";
+			Tile tile = newDetailedMap.getTile();
+			if(tile!=null){
+				fileName = tile.fileName();
+				description = "Update of " + fileName;
 			}
-			else if(processedBBoxes.size() > 0){
-				/************* CHANGE THIS ************************/
-				//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-				//Step 3 - Make necessary changes to preprocessed (concise) map in DB
-				//A) Get the newest version of the detailed map (note that this may not be equal to the old osMap or dbMapDetailed due to changes and safety margins)
-				BBox oldDetailedMap = DBConnection.boundingBoxQuery(newDetailedMap.leftLon, newDetailedMap.topLat, newDetailedMap.rightLon, newDetailedMap.bottomLat, NOW, false, true, true, false);
-				System.out.println("Loaded old detailed map.");
-				System.out.println(oldDetailedMap);
-				BBox newProcessedMap = oldDetailedMap.preprocess();
-				System.out.println("Processed it.");
-				System.out.println(newProcessedMap);
-				//B) Load the old version of the preprocessed map from the DB (newest version BEFORE the current)
-				BBox oldProcessedMap = DBConnection.boundingBoxQuery(newDetailedMap.leftLon, newDetailedMap.topLat, newDetailedMap.rightLon, newDetailedMap.bottomLat,NOW, true, true, true, true);
-				System.out.println("Loaded old processed map.");
-				System.out.println(oldProcessedMap);
 
-				System.out.println("Resolving differences.");
-				//C) Compare the old processed map against the new one that we created via preprocessing
-				resolveDifferencesInDB(newProcessedMap, oldProcessedMap, NOW, fileName, description, true);
-				
-				//Mark the tile as complete
-				Tile tile = newProcessed
-				synchronized(Controller.dbTileLock){
-					tile.setProcessed_map_status(Tile.DONE);
-					DBConnection.updateTile(tile);
-				}
-				
+			//2) Compare our current DB version of the map against the new version loaded from the OSM file
+			//TODO: Make sure references from detailedLink -> processedLink are properly updated
+			resolveDifferencesInDB(newDetailedMap, oldDetailedMap, start_time, fileName, description, false);
+
+			//Mark the tile as complete
+			synchronized(Controller.lock){
+				tile.setDetailed_map_status(Tile.DONE);
+				DBConnection.updateTile(tile);
 			}
-			
+		}
+		else if(processedBBoxes.size() > 0){
+
+			long NOW = System.currentTimeMillis();
+
+			//Get the newly parsed detailedMap from the queue
+			BBox newProcessedMap = processedBBoxes.remove();
+
+			//1) query the database for the current version of the map within the region spanned by the OSM file
+			//If this is the first time this tile is added, this may contain a few links that go over the border, etc...
+			long start_time = System.currentTimeMillis();
+			BBox oldProcessedMap = DBConnection.boundingBoxQuery(newProcessedMap.leftLon, newProcessedMap.topLat, newProcessedMap.rightLon, newProcessedMap.bottomLat, NOW, true, true, true, true);
+
+			String fileName = "";
+			String description = "";
+			Tile tile = newProcessedMap.getTile();
+			if(tile!=null){
+				fileName = tile.fileName();
+				description = "Update of " + fileName;
+			}
+
+			//2) Compare our current DB version of the map against the new version loaded from the OSM file
+			//TODO: Make sure references from detailedLink -> processedLink are properly updated
+			resolveDifferencesInDB(newProcessedMap, oldProcessedMap, start_time, fileName, description, true);
+
+
+
+			//Mark the tile as complete
+			synchronized(Controller.lock){
+				tile.setProcessed_map_status(Tile.DONE);
+				DBConnection.updateTile(tile);
+			}
+
+		}
+
+		//Mark this thread as complete and start any new threads if necessary
+		isComplete = false;
+		Controller.startThreadsIfNecessary();
 		
 	}
-	
-	
-	
+
+
+	/**
+	 * Tells whether the thread is finished running.  This can happen due to a successful run or an error.
+	 * @return True if the thread completed successfully or failed, False if it is still running
+	 */
+	public boolean isFinished(){
+		if(isComplete)
+			return true;
+		return !super.isAlive();
+	}
 }
 
 

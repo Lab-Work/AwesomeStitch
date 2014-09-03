@@ -19,7 +19,7 @@ public class Log {
 	private static BufferedReader reader;
 
 	private static int MSG_BUFFER_SIZE = 1000;
-	
+	private static boolean alsoPrint = true;
 
 	
 	static LinkedList<LogMessage> logTail;
@@ -58,6 +58,9 @@ public class Log {
 		writer.println(lMsg.toCSVLine());
 		writer.flush();
 		addMessage(lMsg);
+		
+		if(alsoPrint)
+			System.out.println(lMsg.toCSVLine());
 	}
 	
 	public static void e(Exception e){
