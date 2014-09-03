@@ -58,6 +58,13 @@ import org.postgresql.geometric.PGpoint;
 
 public class ParserThread extends Thread{
 
+	Tile tileToParse;
+
+	public ParserThread(Tile tile){
+		tileToParse = tile;
+	}
+
+
 	public static BBox parseBBox(String fileName, double[] coordinates){
 
 		double left = 0, top = 0, right = 0, bottom = 0;
@@ -190,22 +197,16 @@ public class ParserThread extends Thread{
 		//System.out.println("New: " + new_left + "," + new_top + "," + new_right + "," + new_bottom);
 
 		//This BBox will contain ALL of the nodes and links from this region of the OSM file.
-		//This amount of detai is useful for visualization.
 		BBox detail_bbox = new BBox(new_left, new_top, new_right, new_bottom);
 
-
-		//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		//Step 4 : we don't care about intermediate nodes along a path
-		//only intersections (those with more than one way passing through) and endpoints are relevant
-		//so add all of these nodes to the important_bbox
+		//Copy all nodes that have a Way going through them (ignore non-street nodes)
 		for(Node n : tmp_bbox.getAllNodes()){
-			//Add to the detail_bbox as long as there is at least one Way going through it
 			if(n.getOsm_num_ways() > 0)
 				detail_bbox.add(new DetailNode(n));
 		}
 
-		//DBConnection.flush((new Node()).getTableName());
-
+		//At this point, the tmp_bbox is no longer useful
+		detail_bbox = null;
 
 		Log.v("OSM", "Processing " + way_list.size() + " ways.");
 
@@ -299,110 +300,30 @@ public class ParserThread extends Thread{
 
 
 
-
-
-
-	/**
-	 * Pulls some data within a given BoundingBox out of an OSM file and inserts it into the database.
-	 * This is done by first querying the database for existing data in this region, then parsing
-	 * an OSM file.  We compare these two sets of data, and determine what changes need to be made to
-	 * the DB.  Often, this will involve changing versioning information.
-	 * @param fileName The name of the OSM file to be read
-	 * @param left The longitude of the left edge of the box
-	 * @param top The latitude of the top edge of the box
-	 * @param right The longitude of the right edge of the box
-	 * @param bottom The latitude of the bottom edge of the box
-	 */
-	public static long insertBoundingBox(String fileName, double[] coordinates, String description){
-		//get the current time, which we will use to modify timestamps
-		long NOW = System.currentTimeMillis();
-
-
-
-
-
-		//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		//Step 1 - read the OSM file.
-		BBox newDetailedMap = ParserThread.parseBBox(fileName, coordinates);
-
-		///Plotter.drawMap(osMapDetailed, "pics/osmap_" + System.currentTimeMillis() + ".csv", Plotter.L_NONE, Plotter.N_NONE);
-
-
-
-		//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		//Step 2 - Make necessary changes to detailed map in DB
-
-		//A) query the database for the current version of the map within the region spanned by the OSM file
-		long start_time = System.currentTimeMillis();
-		BBox oldDetailedMap = DBConnection.boundingBoxQuery(newDetailedMap.leftLon, newDetailedMap.topLat, newDetailedMap.rightLon, newDetailedMap.bottomLat, NOW, false, true, true, false);
-
-		//B) Compare our current DB version of the map against the new version loaded from the OSM file
-		//TODO: Make sure references from detailedLink -> processedLink are properly updated
-		resolveDifferencesInDB(newDetailedMap,oldDetailedMap, NOW, fileName, description, false);
-
-		oldDetailedMap = null;
-
-
-		
-
-
-
-		//Update the latest map update
-		long update_time = DBConnection.getLatestUpdateTime();
-		if(NOW > update_time)
-			DBConnection.setLatestUpdateTime(NOW);
-
-
-
-		long stop_time = System.currentTimeMillis();
-
-		long secs = (stop_time - start_time) / 1000;
-		Log.v("OSM", "Finished updating DB after " + secs + " seconds.");
-
-
-
-
-
-		return NOW;
-
-	}
-
-
-
-
-	public static void main(String[] args){
-	
-		try {
-			DBConnection.initialize("nyc_server_config");
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			System.out.println("file not found.");
+	@Override
+	public void run(){
+		//Mark this tile as currently processing
+		synchronized(Controller.dbTileLock){
+			tileToParse.setDetailed_map_status(Tile.IN_PROGRESS);
+			DBConnection.updateTile(tileToParse);
 		}
-		DBConnection.chooseSchema("nyc_map");
 
-		long begin_time = System.currentTimeMillis();
-		
-		System.out.println("Getting map from DB.");
-		BBox detail_box = DBConnection.boundingBoxQuery(-90, 50, -70, 30, begin_time, false, false, true, false);
-		System.out.println(detail_box + "");
-		
-		BBox empty_box = DBConnection.boundingBoxQuery(-90, 50, -70, 30, begin_time, true, false, true, false);
+		//Extract file name and coordinates from the Tile
+		String fileName = tileToParse.fileName();
+		double[] coordinates = {tileToParse.getLeft_lon(), tileToParse.getBottom_lat() + Tile.BIG_TILE_SIZE,
+				tileToParse.getLeft_lon() + Tile.BIG_TILE_SIZE, tileToParse.getBottom_lat()};
 
-		
-		
-		System.out.println("Processing map.");
-		BBox processed_box = detail_box.preprocess();
-		
-		System.out.println(processed_box + "");
+		//Parse the file
+		BBox parsedBox = parseBBox(fileName, coordinates);
 
-		System.out.println("Resolving differences in DB.");
-		resolveDifferencesInDB(processed_box, empty_box, begin_time, "blah", "blah", true);
+		//Add the newly created BBox to the queue of DB updates
+		synchronized(Controller.dbTileLock){
+			DBResolverThread.enqueueDetailedBBox(parsedBox);
+		}
 
 
-		System.out.println("Done.");
-		
-		
+
+
 
 
 	}

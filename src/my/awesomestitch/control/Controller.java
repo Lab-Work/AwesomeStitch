@@ -20,7 +20,7 @@ public class Controller {
 	private static List<MapProcessorThread> processorThreads = new LinkedList<MapProcessorThread>();
 
 	private static DBResolverThread dbResolverThread = null;
-	
+
 	/**
 	 * Synchronize on this object when updating tile status.  This prevents DB race conditions.
 	 */
@@ -98,22 +98,69 @@ public class Controller {
 
 	public static void startThreadsIfNecessary(){
 		synchronized(dbTileLock){
-			//If there are any Tiles in the DB where download_status==WAITING
-			//Then create a new MapDownloaderThread to handle it
+			//Find Tiles in the DB where download_status==WAITING
+			//These are tiles that are queued for download
+			//Then create a new MapDownloaderThread to download the .osm file
 			try {
 				synchronized(mapDownloaderThreads){
 					ResultSet rs = DBConnection.executeQuery("SELECT * FROM tmp_schema.tiles WHERE download_status=" + Tile.WAITING + ";");
 					while(rs.next() && numRunningMapDownloaderThreads() < MAX_DOWNLOADER_THREADS){
 						Tile tile = new Tile(rs);
-	
+
 						MapDownloaderThread thread = new MapDownloaderThread(tile);
-	
+						mapDownloaderThreads.add(thread);
+
 						thread.start();
 					}
 				}
 			} catch (SQLException e) {
-				Log.v("DB", "Error searching for not-downloaded tiles.");
+				Log.v("DB", "Error searching for tiles queued for download.");
 				Log.e(e);
+			}
+
+
+			//If there are any Tiles in the DB where download_status==DONE and detailed_map_status==WAITING
+			//These are tiles that are done downloading, and are queued for parsing
+			//Then create a new ParserThread to parse the .osm thread
+			try{
+				synchronized(parserThreads){
+					ResultSet rs = DBConnection.executeQuery("SELECT * from tmp_schema.tiles WHERE download_status=" + Tile.DONE+ " AND detailed_map_status=" + Tile.WAITING + ";");
+
+					while(rs.next() && numRunningParserThreads() < MAX_PARSER_THREADS){
+						Tile tile = new Tile(rs);
+
+						ParserThread thread = new ParserThread(tile);
+						parserThreads.add(thread);
+						thread.start();
+					}
+				}
+			} catch(SQLException e){
+				Log.v("DB", "Error searching for tiles queued for parsing.");
+			}
+
+			//If all tiles in the DB have detailed_map_status==DONE, then the detailed map is fully created
+			//It is now possible to begin preprocessing it and creating the processed map
+			//all tiles with processed_map_status==WAITING must be processed
+			try{
+				synchronized(processorThreads){
+					//Query for all tiles that are not done with the detailed map parsing
+					ResultSet rs = DBConnection.executeQuery("SELECT * from tmp_schema.tiles WHERE detailed_map_status!=" + Tile.DONE + ";");
+					//If none exist, then we can proceed
+					if(!rs.next()){
+						
+						ResultSet rs2 = DBConnection.executeQuery("SELECT * from tmp_schema.tiles where processed_map_status=" + Tile.WAITING + ";");
+
+						while(rs.next() && numRunningMapProcessorThreads() < MAX_PROCESSOR_THREADS){
+							Tile tile = new Tile(rs);
+
+							MapProcessorThread thread = new MapProcessorThread(tile);
+							processorThreads.add(thread);
+							thread.start();
+						}
+					}
+				}
+			} catch(SQLException e){
+				Log.v("DB", "Error searching for tiles queued for preprocessing.");
 			}
 		}
 

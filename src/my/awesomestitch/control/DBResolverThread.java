@@ -14,6 +14,7 @@ import my.awesomestitch.mapobjects.DetailLinkMapping;
 import my.awesomestitch.mapobjects.DetailNode;
 import my.awesomestitch.mapobjects.Link;
 import my.awesomestitch.mapobjects.Node;
+import my.awesomestitch.mapobjects.Tile;
 
 public class DBResolverThread extends Thread {
 	public static final long DISTANT_FUTURE = 40000000000000L;
@@ -339,16 +340,7 @@ public class DBResolverThread extends Thread {
 
 	}
 
-	/**
-	 * Starts a DBResolverThread if one is not already running
-	 */
-	public static void startThreadIfNecessary(){
-		if(currentRunningThread==null || !currentRunningThread.isAlive()){
-			currentRunningThread = new DBResolverThread();
-			currentRunningThread.start();
-		}
-	}
-	
+
 	/**
 	 * Add a detailed BBox into the queue of boxes to be resolved in the DB
 	 * And start a DBResolverThread if necessary
@@ -356,7 +348,6 @@ public class DBResolverThread extends Thread {
 	 */
 	public static void enqueueDetailedBBox(BBox bbox){
 		detailedBBoxes.add(bbox);
-		startThreadIfNecessary();
 	}
 	
 	/**
@@ -366,11 +357,10 @@ public class DBResolverThread extends Thread {
 	 */
 	public static void enqueueProcessedBBox(BBox bbox){
 		processedBBoxes.add(bbox);
-		startThreadIfNecessary();
 	}
 	
 	public void run(){
-		do{
+
 			//This thread runs as long as there are still detailedBBoxes or processedBBoxes to add to the DB
 			
 			if(detailedBBoxes.size() > 0){
@@ -388,17 +378,24 @@ public class DBResolverThread extends Thread {
 
 				String fileName = "";
 				String description = "";
-				if(newDetailedMap.getTile()!=null){
-					fileName = newDetailedMap.getTile().fileName();
+				Tile tile = newDetailedMap.getTile();
+				if(tile!=null){
+					fileName = tile.fileName();
 					description = "Update of " + fileName;
 				}
 				
 				//2) Compare our current DB version of the map against the new version loaded from the OSM file
 				//TODO: Make sure references from detailedLink -> processedLink are properly updated
 				resolveDifferencesInDB(newDetailedMap, oldDetailedMap, start_time, fileName, description, false);
+				
+				//Mark the tile as complete
+				synchronized(Controller.dbTileLock){
+					tile.setDetailed_map_status(Tile.DONE);
+					DBConnection.updateTile(tile);
+				}
 			}
 			else if(processedBBoxes.size() > 0){
-				
+				/************* CHANGE THIS ************************/
 				//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 				//Step 3 - Make necessary changes to preprocessed (concise) map in DB
 				//A) Get the newest version of the detailed map (note that this may not be equal to the old osMap or dbMapDetailed due to changes and safety margins)
@@ -417,9 +414,15 @@ public class DBResolverThread extends Thread {
 				//C) Compare the old processed map against the new one that we created via preprocessing
 				resolveDifferencesInDB(newProcessedMap, oldProcessedMap, NOW, fileName, description, true);
 				
+				//Mark the tile as complete
+				Tile tile = newProcessed
+				synchronized(Controller.dbTileLock){
+					tile.setProcessed_map_status(Tile.DONE);
+					DBConnection.updateTile(tile);
+				}
+				
 			}
 			
-		} while(detailedBBoxes.size() > 0 || processedBBoxes.size() > 0);
 		
 	}
 	

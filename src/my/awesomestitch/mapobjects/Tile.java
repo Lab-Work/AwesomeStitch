@@ -105,7 +105,7 @@ public class Tile extends DBObject {
 	
 	/**
 	 * Computes the PostGIS geometry of this tile.
-	 * @return A 4-vertix Polygon representing this Tile
+	 * @return A 4-vertex Polygon representing this Tile
 	 */
 	private Polygon constructGeom(){
 		Point topLeftCorner = new Point(left_lon, bottom_lat + BIG_TILE_SIZE);

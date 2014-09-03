@@ -34,34 +34,14 @@ public class MapProcessorThread extends Thread {
 
 	String name;
 	static int thread_num = 1;
-	public static final int MAX_PROCESSOR_THREADS = 2;
-
-
-	public static void enqueue(Tile tile){
-
-		synchronized(toProcessQueue){
-			toProcessQueue.add(tile);
-		}
-
-
-		synchronized(runningThreads){
-			if(runningThreads.size() < MAX_PROCESSOR_THREADS){
-				MapProcessorThread thread = new MapProcessorThread();
-				//Track this thread in the runningThreads set
-				runningThreads.add(thread);
-				thread.start();
-			}
-		}
+	Tile tileToProcess = null;
 
 
 
 
-	}
 
 
-
-
-	public MapProcessorThread(){
+	public MapProcessorThread(Tile tile){
 		this.name = "PC " + thread_num++;
 	}
 
@@ -73,61 +53,36 @@ public class MapProcessorThread extends Thread {
 
 	@Override
 	public void run(){
-		boolean stillWorkToDo = true;
-		//This thread runs until there are no more tiles to download
-		do{
-			//Retrieve the next tile if there are still tiles in the queue
-			Tile nextTile = null;
 
-			synchronized(toProcessQueue){
-				if(toProcessQueue.isEmpty())
-					stillWorkToDo = false;
-				else{
-					nextTile = toProcessQueue.poll();
-				}
+
+		echo("got " + tileToProcess);
+
+		//If we were able to get a tile, it must be downloaded and marked for processing
+		if(tileToProcess!=null){
+			//Get the coordinates of this tile and the current time
+			double left = tileToProcess.getLeft_lon();
+			double top = tileToProcess.getBottom_lat() + Tile.BIG_TILE_SIZE;
+			double right = tileToProcess.getLeft_lon() + Tile.BIG_TILE_SIZE;
+			double bottom = tileToProcess.getBottom_lat();
+			long NOW =System.currentTimeMillis();
+
+			//Load the newest version of the detailed map from the DB
+			BBox newDetailedMap = DBConnection.boundingBoxQuery(left, top, right, bottom, NOW, false, true, true, true);
+
+			//Perform the preprocessing - this is a fairly heavy computation
+			BBox newProcessedMap = newDetailedMap.preprocess();
+
+			//Add the processed tile to the list of DB updates
+			synchronized(Controller.dbTileLock){
+				DBResolverThread.enqueueProcessedBBox(newProcessedMap);
 			}
 
-			echo("got " + nextTile);
-
-			//If we were able to get a tile, it must be downloaded and marked for processing
-			if(nextTile!=null){
-				double[] coordinates = new double[4];
-				coordinates[0] = nextTile.getLeft_lon();
-				coordinates[1] = nextTile.getBottom_lat() + Tile.BIG_TILE_SIZE;
-				coordinates[2] = nextTile.getLeft_lon() + Tile.BIG_TILE_SIZE;
-				coordinates[3] = nextTile.getBottom_lat();
-				//long NOW = OSMParser.insertBoundingBox(nextTile.fileName(), coordinates, "AUTO-GENERATED");
-
-				//Parse the file
-				BBox newDetailedMap = ParserThread.parseBBox(nextTile.fileName(), coordinates);
-				newDetailedMap.setTile(nextTile);
-				
-				
-				//Inform MapDownloaderThread that this Tile is done.  It can now be used
-				MapDownloaderThread.doneProcessing(nextTile);
-
-				nextTile.setStill_downloading(false);
-				nextTile.setUpdated_timestamp(NOW);
-
-				DBConnection.updateTile(nextTile);
-
-				int num = DBConnection.numTilesWaiting();
-				Log.v("TILE", "Still waiting for " + num + " tiles.");
-
-				SendNotificationIfNecessary(nextTile);
 
 
-			}
-
-			echo("Still have work to do? " + stillWorkToDo);
-		}while(stillWorkToDo);
-
-		//Remove this thread from the list of running threads
-		runningThreads.remove(this);
-		echo("Terminating.");
-
+		}
 	}
 
+	/*
 	public void SendNotificationIfNecessary(Tile justFinished){
 		//First, get all UserTiles for this Tile - this will tell us which users are waiting for this Tile.
 		List<UserTile> relevantUserTiles = DBConnection.lookupUserTiles(justFinished.getGrid_x(), justFinished.getGrid_y());
@@ -144,8 +99,8 @@ public class MapProcessorThread extends Thread {
 			List<UserTile> current_user_usertiles = DBConnection.lookupUserTiles(user_id);
 			//Use these to get the relevant Tiles
 			List<Tile> current_user_tiles = DBConnection.getUniqueTiles(current_user_usertiles);
-			
-			
+
+
 			//If ALL of these tiles are done downloading, then this user's request is complete
 			boolean allDone = true;
 			long latestTimestamp = 0;
@@ -193,9 +148,9 @@ public class MapProcessorThread extends Thread {
 				User usr = DBConnection.lookupUser(match.getUser_id());
 
 				String emailAddress = usr.getUsername();
-			
+
 				Log.v("TILE", "Sending notification email to " + emailAddress);
-				
+
 				sendNotificationEmail(emailAddress, subject, msg);
 			}
 
@@ -221,22 +176,22 @@ public class MapProcessorThread extends Thread {
 		}
 	}
 
-	
+
 	public static String timeString(long millis){
 		long total = (millis / 1000);
-		
+
 		int sec = (int) (total % 60);
 		total /= 60;
 		int min = (int)(total % 60);
 		total /=60;
 		int hour = (int)(total % 60);
-		
-		
+
+
 		return hour + " Hours, " + min + " Minutes, " + sec + " Seconds";
-		
+
 	}
-	
-	
+
+
 	public static void sendNotificationEmail(String to, String subject, String body){
 		String from = "trafficturknotifier@gmail.com";
 		String pass = "tr@fficturk2013";
@@ -275,5 +230,5 @@ public class MapProcessorThread extends Thread {
 			me.printStackTrace();
 		}
 	}
-
+	 */
 }

@@ -179,11 +179,6 @@ public static int enqueueSquare(double center_lon, double center_lat, int tile_r
 				downloadTile(tileToDownload);
 				//Tile successfully downloaded.
 
-				//Mark this tile as finished downloading
-				synchronized(Controller.dbTileLock){
-					tileToDownload.setDownload_status(Tile.DONE);
-					DBConnection.updateTile(tileToDownload);
-				}
 
 			}
 			catch(IOException e){
