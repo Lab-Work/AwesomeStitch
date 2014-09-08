@@ -991,6 +991,19 @@ public class DBConnection {
 		}
 
 	}
+	
+	/**
+	 * Grabs the entire map from the DB and puts it into a BBox.  Not recommended for large maps unless you have a crazy 
+	 * amount of memory.
+	 * @param processed True to select the entire processed map, False to select the entire detailed map
+	 * @return A BBox containing all Nodes and Links in the DB
+	 */
+	public static BBox getEntireMap(boolean processed){
+		
+		long NOW = System.currentTimeMillis();
+		return boundingBoxQuery(-1000, 1000, 1000, -1000, NOW, processed, false);
+
+	}
 
 
 	/**

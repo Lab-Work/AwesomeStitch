@@ -11,8 +11,8 @@ import my.awesomestitch.mapobjects.User;
 import my.awesomestitch.mapobjects.UserTile;
 
 public class Controller {
-	//Keep track of the necessary threads
 
+	//Keep track of the necessary threads
 	private static int MAX_DOWNLOADER_THREADS = 2;
 	private static List<MapDownloaderThread> mapDownloaderThreads = new LinkedList<MapDownloaderThread>();
 
@@ -25,10 +25,16 @@ public class Controller {
 	private static DBResolverThread dbResolverThread = null;
 
 	/**
+	 * The threads that are waiting for the processor threads to finish.
+	 */
+	private static List<Thread> threadsWaitingToJoin = new LinkedList<Thread>();
+
+	/**
 	 * Synchronize on this object when updating tile status.  This prevents DB race conditions.
 	 */
 	public static final Object lock = new Object();
 
+	public static final Object joinLock = new Object();
 
 
 	/**
@@ -58,14 +64,11 @@ public class Controller {
 			dbResolverThread = null;
 	}
 
-	/*
-	 	1) Download tile
-		2) Parse
-		3) Insert detailed map
-		4) Preprocess
-		5) Insert processed map
-	 */
 
+	/**
+	 * This method starts the threads which download, parse, process, and update the enqueued Tiles.
+	 * Lists are maintained of the currently running threads, ensuring that a fixed number can run at a time.
+	 */
 	public static void startThreadsIfNecessary(){
 		synchronized(lock){
 			//Update the thread lists to accurately represent the currently running threads
@@ -143,11 +146,17 @@ public class Controller {
 
 
 		}
+		
+		if(finishedRunning()){
+			synchronized(joinLock){
+				joinLock.notify();
+			}
+		}
 
 
 	}
 
-	
+
 
 	/**
 	 * Adds a new Tile into the processing pipeline by adding it into the DB.  Background threads will then
@@ -229,7 +238,7 @@ public class Controller {
 	public static void enqueue(Tile tile, User user, boolean force){
 		enqueue(tile, user, force, true);
 	}
-	
+
 	/**
 	 * Shortcut to previous method which sends force=False by default
 	 * @param tile The Tile that needs to be downloaded.
@@ -287,4 +296,37 @@ public class Controller {
 
 		return enqueueSquareOfTiles(centerTile.getGrid_x(), centerTile.getGrid_y(), tile_radius, user, force);
 	}
+
+	/**
+	 * Indicates whether all threads have finished running.  If they are, then the map is ready to use.
+	 * @return True if all threads are finished running, False if not.
+	 */
+	public static boolean finishedRunning(){
+		synchronized(lock){
+			cleanThreadLists();
+
+			return (mapDownloaderThreads.size()==0 && parserThreads.size()==0 && processorThreads.size()==0 &&  dbResolverThread==null);
+		}
+	}
+
+	/**
+	 * Blocks until all threads are done running and the map is ready.
+	 */
+	public static void joinAll(){
+
+		//The method will not execute until all threads are finished running.
+		//Technially the loop should only execute once, but it is implemented as
+		//a while loop for robustness
+		while(!finishedRunning()){
+			synchronized(joinLock){
+				try {
+					joinLock.wait();
+				} catch (InterruptedException e) {
+					Log.e(e);
+				}
+			}
+
+		}
+	}
+
 }

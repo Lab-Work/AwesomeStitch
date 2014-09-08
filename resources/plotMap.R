@@ -1,0 +1,25 @@
+mapcolors = c("black", "blue", "red","green", "cyan", "orange", "purple", "darkblue", "darkred", "darkgreen", "grey")
+
+
+#Process command line arguments
+argv = commandArgs(trailingOnly=T)
+nodeFile = argv[1]
+linkFile = argv[2]
+outFile = argv[3]
+
+#Read graph data from files
+nodes = read.csv(nodeFile)
+links = read.csv(linkFile)
+
+#Convert node and link version numbers to unique, sequential integers
+all_versions = c(nodes$version, links$version)
+all_versions = as.numeric(factor(all_versions, levels=unique(all_versions)))
+all_versions = ((all_versions-1) %% length(mapcolors)) + 1
+nodes$version=all_versions[1:nrow(nodes)]
+links$version=all_versions[(nrow(nodes)+1):length(all_versions)]
+
+
+pdf(outFile)
+plot(nodes$lon, nodes$lat, pch=20, cex=.5, col=mapcolors[nodes$version])
+segments(links$begin_lon, links$begin_lat, links$end_lon, links$end_lat, col=mapcolors[links$version])
+dev.off()

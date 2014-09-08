@@ -1,11 +1,17 @@
 package my.awesomestitch.mapobjects;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.IdentityHashMap;
 import java.util.LinkedList;
 import java.util.List;
 
+import my.awesomestitch.control.Log;
 
 import org.postgis.LineString;
 import org.postgis.Point;
@@ -1068,6 +1074,44 @@ public class BBox {
 		}
 	}
 
+	/**
+	 * Saves this BBox to CSV files for easy use at a later time.
+	 * @param nodeFileName The file where a table of Nodes will be saved
+	 * @param linkFileName The file where a table of Links will be saved
+	 */
+	public void saveToFile(String nodeFileName, String linkFileName){
+		
+		try {
+			File f = new File(nodeFileName);
+			PrintWriter writer = new PrintWriter(f);
+			writer.println("id,lat,lon,version");
+			for(Node node : getAllNodes()){
+				String line = node.getId() + "," + node.getGeom().y + "," + node.getGeom().x + "," + node.getBirth_timestamp();
+				writer.println(line);
+			}
+			
+		} catch (FileNotFoundException e) {
+			Log.e(e);
+		}
+		
+		try {
+			File f = new File(linkFileName);
+			PrintWriter writer = new PrintWriter(f);
+			writer.println("id,begin_node_id,end_node_id,street_name,street_class,street_length,begin_angle,end_angle,begin_lat,begin_lon,end_lat,end_lon,version");
+			for(Link link : getAllLinks()){
+				String line = link.getId() + "," + link.getBegin_node_id() + "," + link.getEnd_node_id() + "," + link.getOsm_name().replace(",", "") +
+						"," + link.getOsm_class() + "," + link.getStreet_length() + "," + link.getBegin_angle() + "," + link.getEnd_angle() + 
+						"," + link.getGeom().getPoints()[0].y + ","  + link.getGeom().getPoints()[0].x +
+						"," + link.getGeom().getPoints()[1].y + ","  + link.getGeom().getPoints()[1].x + "," + link.getBirth_timestamp();
+				writer.println(line);
+			}
+			
+		} catch (FileNotFoundException e) {
+			Log.e(e);
+		}
+	}
+	
+	
 	public double getMin_lon() {
 		return min_lon;
 	}
