@@ -44,11 +44,11 @@ public class DBConnection {
 	/**
 	 * The Connection object from the java.sql package
 	 */
-	private static Connection con = null;
+	protected static Connection con = null;
 	/**
 	 * The name of the schema we are currently editing
 	 */
-	private static String schema = null;
+	protected static String schema = null;
 
 
 
@@ -87,7 +87,6 @@ public class DBConnection {
 		try{
 			//Use the JDBC DriverManager to make the connection.
 			con = DriverManager.getConnection(url, userName, password);
-			chooseSchema(schema);
 		}
 		catch(SQLException ex){
 			Log.v("DB","SQL EXCEPTION!");
@@ -121,7 +120,9 @@ public class DBConnection {
 		String dbName = null;
 		String dbUserName = null;
 		String dbPassword = null;
+		String schemaName = null;
 
+		//Parse file to get the necessary values
 		try {
 			while((line=br.readLine())!=null){
 				String[] toks = line.split("=");
@@ -134,28 +135,37 @@ public class DBConnection {
 				else if(toks[0].equalsIgnoreCase("db_password"))
 					dbPassword = toks[1].trim();
 				else if(toks[0].equalsIgnoreCase("db_schema"))
-					schema = toks[1].trim();
+					schemaName = toks[1].trim();
 
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 
+		//Connect to the DB
 		if(dbHostName==null)
 			connect(dbName, dbUserName, dbPassword);
 		else
 			connect(dbHostName, dbName, dbUserName, dbPassword);
+		
+		//Choose the desired schema
+		boolean schemaExists = chooseSchema(schemaName);
+		
+		//If that schema does not exist, create it
+		if(!schemaExists)
+			createBasicSchema();
+		
 
 	}
 
 
 	/**
-	 * Chooses an existing schema to access.  Once a schema is chosen, all queries will be performed on
-	 * that schema's tables.
-	 * @param schemaName the name of the schema to choose.
+	 * Checks if a schema exists in the DB
+	 * @param schemaName The name of the schema in question
+	 * @return True of the schema exists, False if it does not
 	 */
-	public static boolean chooseSchema(String schemaName){
-		schema = schemaName;
+	public static boolean schemaExists(String schemaName){
+		
 		try{
 			Statement st = con.createStatement();
 
@@ -163,20 +173,58 @@ public class DBConnection {
 			String query = "select table_schema from information_schema.tables where table_schema = '" + schemaName + "';";
 			ResultSet rs = st.executeQuery(query);
 			while(rs.next()){
-				DBConnection.schema = schemaName;
-				Log.v("DB", "Set current schema to '" + schemaName + "'");
 				return true;
 			}
 			Log.v("DB","SCHEMA '" + schemaName + "' NOT FOUND");
-			createSchema(schemaName);
 
 		}
 		catch(SQLException e){
 			Log.v("DB","SQL EXCEPTION");
 			Log.v("DB",e.getSQLState());
 		}
-
 		return false;
+	}
+	
+	
+	/**
+	 * Checks if a table exists with in a given schema in the DB
+	 * @param schemaName The name of the schema to look in
+	 * @param tableName The name of the table in question
+	 * @return True of the table exists, False if it does not
+	 */
+	public static boolean tableExists(String schemaName, String tableName){
+		try{
+			Statement st = con.createStatement();
+
+			//check if schema exists
+			String query = "SELECT table_schema FROM information_schema.tables WHERE table_schema = '" + schemaName + 
+					"' AND table_name='" + tableName + "';";
+			ResultSet rs = st.executeQuery(query);
+			while(rs.next()){
+				return true;
+			}
+			Log.v("DB","SCHEMA '" + schemaName + "' NOT FOUND");
+
+		}
+		catch(SQLException e){
+			Log.v("DB","SQL EXCEPTION");
+			Log.v("DB",e.getSQLState());
+		}
+		return false;
+		
+	}
+	
+	/**
+	 * Chooses an existing schema to access.  Once a schema is chosen, all queries will be performed on
+	 * that schema's tables. NOTE: The schema will still be chosen if it does not exist, with the expectation
+	 * that it is about to be created via createBasicSchema()
+	 * @param schemaName the name of the schema to choose.
+	 * @return True if the schema exists, False if it does not.
+	 */
+	public static boolean chooseSchema(String schemaName){
+
+		DBConnection.schema = schemaName;
+		return schemaExists(schemaName);
 	}
 
 	/**
@@ -186,17 +234,18 @@ public class DBConnection {
 	public static String getSchemaName(){return schema;}
 
 	/**
-	 * Creates a schema with all of the tables necessary for TrafficTurk.
+	 * Creates a schema with all of the tables necessary for AwesomeStitch.
 	 * For example, the name supplied is "app", it will create tables
 	 * app.nodes, app.links, etc...
 	 * If a schema with that name already exists, nothing happens.
-	 * @param name	the name of the schema that we are creating.
+	 * @param name The name of the schema that we are creating.
 	 */
-	public static void createSchema(String name){
+	public static void createBasicSchema(){
+		
 
 		//Create the Schema
-		executeUpdate("CREATE SCHEMA " + name + ";");
-		
+		executeUpdate("CREATE SCHEMA " + schema + ";");
+
 		//Create the tables within this schema
 		executeUpdate("CREATE TABLE tmp_schema.changelog ( timestamp BIGINT, nodes_added BIGINT, nodes_deleted BIGINT, nodes_updated BIGINT, nodes_untouched BIGINT, links_added BIGINT, links_deleted BIGINT, links_updated BIGINT, links_untouched BIGINT, file_name CHARACTER VARYING(200), description CHARACTER VARYING(5000) );");
 		executeUpdate("CREATE TABLE tmp_schema.nodes ( node_id BIGINT, is_complete BOOLEAN DEFAULT TRUE, num_in_links SMALLINT, num_out_links SMALLINT, osm_traffic_controller CHARACTER VARYING(100), geom geometry('POINT', 4326), osm_changeset BIGINT, birth_timestamp BIGINT, death_timestamp BIGINT, UNIQUE (node_id, birth_timestamp) );");
@@ -210,8 +259,8 @@ public class DBConnection {
 		executeUpdate("CREATE TABLE tmp_schema.users ( user_id BIGINT, username CHARACTER VARYING(100) NOT NULL, password CHARACTER VARYING(100), email CHARACTER VARYING(100), phone_number CHARACTER VARYING(40), first_name CHARACTER VARYING(100), last_name CHARACTER VARYING(100), UNIQUE (username), CONSTRAINT users_pkey PRIMARY KEY (user_id) );");
 		executeUpdate("CREATE TABLE tmp_schema.extravars (name CHARACTER VARYING, val CHARACTER VARYING, UNIQUE(name) );");
 
-		
-		
+
+
 		//Create Indexes - these become very important if the map gets big
 		executeUpdate("CREATE INDEX nodes_id ON tmp_schema.nodes USING hash(node_id);");
 		executeUpdate("CREATE INDEX nodes_geom_gist ON tmp_schema.nodes USING GIST (geom);");
@@ -236,6 +285,8 @@ public class DBConnection {
 		executeUpdate("CREATE INDEX detail_links_death_timestamp on tmp_schema.detail_links USING btree(death_timestamp);");
 
 	}
+
+	
 
 	/**
 	 * Immediately inserts this object into the database - buffering is avoided altogether.
@@ -483,7 +534,7 @@ public class DBConnection {
 			return null;
 		}
 	}
-	
+
 	/**
 	 * A simple wrapper for SQL updates.
 	 * @param sql
@@ -509,6 +560,54 @@ public class DBConnection {
 	public static void addNewUser(User u){
 		insertNow(u);
 	}
+
+	/**
+	 * Validates a user by checking the username and password against the database.
+	 * @param u The user to be validated
+	 * @return True if the password matches the username, false otherwise
+	 * @throws UserDNEException if the user does not exist in the database
+	 */
+	public static boolean validateUser(User u) throws UserDNEException{
+		try{
+			//Look up user by username
+			//Prepare query
+			String query = "SELECT * FROM " + u.getTableName() + " WHERE username='" + u.getUsername() + "';";
+			query = query.replace("tmp_schema", DBConnection.getSchemaName());
+			//execute query
+			Statement st = DBConnection.getConnection().createStatement();
+			ResultSet rs = st.executeQuery(query);
+			//Generate a User from the row returned from the database
+			if(rs.next()){
+				User matchUser = new User(rs);
+				//check our current password against the password from the database
+				if(u.getPassword().equals(matchUser.getPassword())){
+					//if we have a match, grab other information from the database
+					u.setUser_id(matchUser.getUser_id());
+					u.setEmail(matchUser.getEmail());
+					u.setPhone_number(matchUser.getPhone_number());
+					u.setFirst_name(matchUser.getFirst_name());
+					u.setLast_name(matchUser.getLast_name());
+					//return true since it was successful
+					return true;
+				}
+				else{
+					//Password did not match - return false
+					return false;
+				}
+			}
+			else{
+				//Username does not exist in database - throw exception
+				throw new UserDNEException();
+			}
+		}
+		catch(SQLException e){
+			Log.v("DB","SQL EXCEPTION");
+			Log.v("DB",e.getSQLState());
+			Log.e(e);
+			return false;
+		}
+	}
+
 
 	/**
 	 * Looks up a User by their ID number in the database
@@ -724,8 +823,8 @@ public class DBConnection {
 
 		//======================== STEP 1 ====================================
 		//Get all of the Links that intersect the Bounding Box (A GiST index is used for fast querying)
-		
-		
+
+
 		String query;
 		if(!includeFullWay){
 			//Simple query - the full way is not desired, so just get links that intersect the box
@@ -735,7 +834,7 @@ public class DBConnection {
 		}
 		else{
 			//A more complex query which contains all links that intersect the box, PLUS any additional links that are part of the same Way
-			
+
 			//Note the similarity of this subquery to the simple query above
 			String subquery = "SELECT osm_way_id FROM " + linkTableName + " WHERE ST_Intersects("
 					+ linkTableName + ".geom, 'SRID=4326;" + box.toString() + "'::geometry)" +
@@ -949,7 +1048,7 @@ public class DBConnection {
 	 * @param useSafetyMargin True if we want to also include parts of the map within a "safety margin" of the box.  The safety margin should be used when doing updates to the DB, but not when sending a box to the app.  This prevents us from sending too much unnecessary data at once.
 	 * @return
 	 */
-	
+
 	public static BBox boundingBoxQuery(double left, double top, double right, double bottom, long timestamp, boolean processed, boolean useSafetyMargin){
 		return boundingBoxQuery(left, top, right, bottom, timestamp, processed, useSafetyMargin, false, false);
 	}
@@ -973,7 +1072,7 @@ public class DBConnection {
 		//Fetch the relevant big tile from the DB
 		Tile tile = lookupTile(big_tile_x, big_tile_y);
 		if(tile!=null && tile.getProcessed_map_status()==Tile.DONE){
-			
+
 			//If this tile exists, and it is done being processed, do a BBox query for the rectangle that it defines
 			long NOW = System.currentTimeMillis();
 
@@ -991,7 +1090,7 @@ public class DBConnection {
 		}
 
 	}
-	
+
 	/**
 	 * Grabs the entire map from the DB and puts it into a BBox.  Not recommended for large maps unless you have a crazy 
 	 * amount of memory.
@@ -999,7 +1098,7 @@ public class DBConnection {
 	 * @return A BBox containing all Nodes and Links in the DB
 	 */
 	public static BBox getEntireMap(boolean processed){
-		
+
 		long NOW = System.currentTimeMillis();
 		return boundingBoxQuery(-1000, 1000, 1000, -1000, NOW, processed, false);
 
@@ -1181,8 +1280,8 @@ public class DBConnection {
 			Log.e(e);
 		}
 	}
-	
-	
+
+
 	/**
 	 * Looks up a Link object by ID
 	 * @param id The desired Lonk ID
@@ -1274,7 +1373,7 @@ public class DBConnection {
 		}
 		return null;
 	}
-	
+
 	/**
 	 * Lookup the list of UserTiles associated with a coordinate.
 	 * Recall that the UserTile tells whether a User has a copy of that Tile, is waiting for that Tile, etc...
@@ -1534,8 +1633,8 @@ public class DBConnection {
 		}
 
 	}
-	
-	
+
+
 	/**
 	 * Update the updated_timestamp and still_downloading fields of a Tile in the DB
 	 * @param t the Tile to update
@@ -1580,5 +1679,5 @@ public class DBConnection {
 		}
 		return 0;
 	}
-	
+
 }

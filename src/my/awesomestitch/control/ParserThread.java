@@ -105,6 +105,9 @@ public class ParserThread extends Thread{
 		}
 
 		for(XMLTag tag : tags){
+			if(tag==null || tag.getType()==null)
+				continue;
+			
 			//System.out.println(line);
 			//parse the line into an XML tag and check the type
 			try{
