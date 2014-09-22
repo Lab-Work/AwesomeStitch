@@ -433,6 +433,8 @@ public class DBResolverThread extends Thread {
 				tile.setProcessed_map_status(Tile.DONE);
 				DBConnection.updateTile(tile);
 			}
+			
+			//TODO: Send Email
 
 		}
 

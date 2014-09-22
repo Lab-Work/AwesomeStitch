@@ -181,22 +181,6 @@ public class MapProcessorThread extends Thread {
 
 	}
 
-	public static void joinAll(){
-
-		MapDownloaderThread.joinAll();
-
-		List<MapProcessorThread> threads = new LinkedList<MapProcessorThread>(runningThreads);
-
-		for(MapProcessorThread thread : threads){
-			try {
-				thread.join();
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				Log.e(e);
-			}
-		}
-	}
-
 
 	public static String timeString(long millis){
 		long total = (millis / 1000);
