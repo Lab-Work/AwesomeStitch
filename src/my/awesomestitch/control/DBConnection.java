@@ -50,7 +50,9 @@ public class DBConnection {
 	 */
 	protected static String schema = null;
 
-
+	
+	public static String OSM_SERVER_NAME = null;
+	
 
 	public static long DISTANT_FUTURE = 40000000000000L;
 	/**
@@ -121,6 +123,7 @@ public class DBConnection {
 		String dbUserName = null;
 		String dbPassword = null;
 		String schemaName = null;
+		
 
 		//Parse file to get the necessary values
 		try {
@@ -136,11 +139,15 @@ public class DBConnection {
 					dbPassword = toks[1].trim();
 				else if(toks[0].equalsIgnoreCase("db_schema"))
 					schemaName = toks[1].trim();
+				else if(toks[0].equalsIgnoreCase("osm_server_name"))
+					OSM_SERVER_NAME =  toks[1].trim();
+					
 
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	
 
 		//Connect to the DB
 		if(dbHostName==null)

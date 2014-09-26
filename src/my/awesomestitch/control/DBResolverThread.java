@@ -150,6 +150,7 @@ public class DBResolverThread extends Thread {
 					//CASE (C) - the Node exists in both OSM and our DB, but the DB is up-to-date
 					//So do nothing
 					chLog.incrementNodes_untouched();
+					
 				}
 			}
 
@@ -439,7 +440,7 @@ public class DBResolverThread extends Thread {
 		}
 
 		//Mark this thread as complete and start any new threads if necessary
-		isComplete = false;
+		isComplete = true;
 		Controller.startThreadsIfNecessary();
 		
 	}

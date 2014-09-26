@@ -141,6 +141,7 @@ public class Controller {
 			//So start a new DBResolverThread if there is not already one running
 			if(DBResolverThread.hasBBoxesInQueue() && dbResolverThread==null){
 				DBResolverThread thread = new DBResolverThread();
+				dbResolverThread = thread;
 				thread.start();
 			}
 
@@ -304,7 +305,10 @@ public class Controller {
 	public static boolean finishedRunning(){
 		synchronized(lock){
 			cleanThreadLists();
-
+			
+			// System.out.println("[downloader]" + "[parser]" + "[processor]" + "[dbResolver]"+
+			//		mapDownloaderThreads.size() + "|" + parserThreads.size() + "|" + processorThreads.size() + "|" + dbResolverThread);
+			
 			return (mapDownloaderThreads.size()==0 && parserThreads.size()==0 && processorThreads.size()==0 &&  dbResolverThread==null);
 		}
 	}

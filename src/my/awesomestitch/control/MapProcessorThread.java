@@ -88,7 +88,7 @@ public class MapProcessorThread extends Thread {
 
 
 		//Mark this thread as complete and start any new threads if necessary
-		isComplete = false;
+		isComplete = true;
 		Controller.startThreadsIfNecessary();
 	}
 
