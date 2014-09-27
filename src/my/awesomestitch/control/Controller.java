@@ -216,16 +216,21 @@ public class Controller {
 
 			//Create a new UserTile - records that the user has ordered this tile in the DB
 			//Later, this information can be used to determine whether a given user has other tiles in the queue
-			if(user!=null){
-				UserTile ut = new UserTile(user.getUser_id(), tile.getGrid_x(), tile.getGrid_y());
-				ut.setOwned_timestamp(UserTile.DNE);
-				ut.setOrdered_timestamp(System.currentTimeMillis());
+			
+			if(user == null)
+				user = DBConnection.getDefaultUser();
+			
+			
+			UserTile ut = new UserTile(user.getUser_id(), tile.getGrid_x(), tile.getGrid_y());
+			ut.setOwned_timestamp(UserTile.DNE);
+			ut.setOrdered_timestamp(System.currentTimeMillis());
 
-				//If this UserTile already exists in the DB, remove it - it needs to be replaced
-				DBConnection.deleteUserTile(ut);
-				//Add this order to the DB
-				DBConnection.insertNow(ut);
-			}
+			//If this UserTile already exists in the DB, remove it - it needs to be replaced
+			DBConnection.deleteUserTile(ut);
+			//Add this order to the DB
+			DBConnection.insertNow(ut);
+			
+			
 
 			if(oldVersion==null)
 				DBConnection.insertNow(tile);

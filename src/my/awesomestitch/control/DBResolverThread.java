@@ -439,10 +439,12 @@ public class DBResolverThread extends Thread {
 			//Mark the tile as complete
 			synchronized(Controller.lock){
 				tile.setProcessed_map_status(Tile.DONE);
+				tile.setUpdated_timestamp(System.currentTimeMillis());
 				DBConnection.updateTile(tile);
 			}
 			
 			//TODO: Send Email
+			Notifier.SendNotificationIfNecessary(tile);
 
 		}
 

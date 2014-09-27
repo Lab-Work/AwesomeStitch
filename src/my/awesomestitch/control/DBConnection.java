@@ -54,6 +54,8 @@ public class DBConnection {
 	
 	public static String OSM_SERVER_NAME = null;
 	
+	public static String DEFAULT_USERNAME = null;
+	
 
 	public static long DISTANT_FUTURE = 40000000000000L;
 	/**
@@ -67,6 +69,7 @@ public class DBConnection {
 	 * A table which maps each type of DBObject to the next available ID number of that type.
 	 */
 	private static Hashtable<String, Long> nextIdTable;
+	
 
 	/**
 	 * Accessor method for the con object.
@@ -108,7 +111,43 @@ public class DBConnection {
 		connect("localhost", dbName, userName, password);
 	}
 
+	private static void setDefaultUser(String username, String password) {
+		
+		User user = new User(DBConnection.DEFAULT_USERNAME, null);
+		String sql = "SELECT * FROM " + new User("","").getTableName() + " WHERE "
+				+ "username = \'" + DEFAULT_USERNAME + "\'";
+		ResultSet rs = DBConnection.executeQuery(sql);
+		
+		try
+		{
+			if(!rs.next())
+				DBConnection.insertNow(user);
+		}
+		catch(SQLException e){
+			Log.v("DB","SQL EXCEPTION");
+			Log.v("DB",e.getSQLState());
+		}
 
+		
+	}
+	
+	public static User getDefaultUser() {
+		
+		String sql = "SELECT * FROM " + new User("","").getTableName() + " WHERE "
+				+ "username = \'" + DEFAULT_USERNAME + "\'";
+		ResultSet rs = DBConnection.executeQuery(sql);
+
+		try {
+			if(rs.next())
+				return new User(rs);
+
+		} catch (SQLException e) {
+			Log.v("DB", "Error looking up default user");
+			Log.e(e);
+		}
+		return null;
+	}
+	
 	/**
 	 * Connect to the DB, using settings loaded from a config file
 	 * @param config_fileName The filename, which contains appropriate info
@@ -175,6 +214,14 @@ public class DBConnection {
 					Way.updateWhitelist(toks[1].trim());
 				else if(toks[0].equalsIgnoreCase("way_blacklist"))
 					Way.updateBlacklist(toks[1].trim());
+				else if(toks[0].equalsIgnoreCase("default_user"))
+					DEFAULT_USERNAME = (toks[1].trim());
+				else if(toks[0].equalsIgnoreCase("default_sender_address"))
+					Notifier.default_sender_address = (toks[1].trim());
+				else if(toks[0].equalsIgnoreCase("default_sender_password"))
+					Notifier.default_sender_password = (toks[1].trim());
+				else if(toks[0].equalsIgnoreCase("default_sender_host"))
+					Notifier.default_sender_host = (toks[1].trim());
 
 			}
 		} catch (IOException | NumberFormatException e) {
@@ -194,6 +241,9 @@ public class DBConnection {
 		//If that schema does not exist, create it
 		if(!schemaExists)
 			createBasicSchema();
+		
+		
+		setDefaultUser(DEFAULT_USERNAME, null);
 		
 
 	}
