@@ -20,19 +20,26 @@ public class DBResolverThread extends Thread {
 	public static final long DISTANT_FUTURE = 40000000000000L;
 
 
-
-	public static final int MAX_QUEUE_SIZE=10;
+	private static int MAX_QUEUE_SIZE = 10;
 	/**
 	 * A Queue of detailed BBoxes which need to be added to the DB
 	 */
-	private static Queue<BBox> detailedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
-
+	// private static Queue<BBox> detailedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	private static Queue<BBox> detailedBBoxes = null;
+	
 	/**
 	 * A Queue of processed BBoxes which need to be added to the DB
 	 */
-	private static Queue<BBox> processedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	// private static Queue<BBox> processedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	private static Queue<BBox> processedBBoxes = null;
 
 	private boolean isComplete = false;
+	
+	public static void init(int max) {
+		MAX_QUEUE_SIZE = max;
+		detailedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+		processedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	}
 
 
 	/**

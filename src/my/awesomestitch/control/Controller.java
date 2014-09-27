@@ -36,7 +36,18 @@ public class Controller {
 
 	public static final Object joinLock = new Object();
 
+	public static void setMaxDownloaderThreads(int max) {
+		MAX_DOWNLOADER_THREADS = max;
+	}
+	
+	public static void setMaxParserThreads(int max) {
+		MAX_PARSER_THREADS = max;
+	}
 
+	public static void setMaxProcessorThreads(int max) {
+		MAX_PROCESSOR_THREADS = max;
+	}
+	
 	/**
 	 * Removes finished threads from the lists of currently running threads.
 	 * This way, the lists accurately represent the currently running threads.
@@ -45,19 +56,22 @@ public class Controller {
 		for(Iterator<MapDownloaderThread> it = mapDownloaderThreads.iterator(); it.hasNext();){
 			MapDownloaderThread thread = it.next();
 			if(thread.isFinished())
-				mapDownloaderThreads.remove(thread);	
+			//	mapDownloaderThreads.remove(thread);
+				it.remove();
 		}
 
 		for(Iterator<MapProcessorThread> it = processorThreads.iterator(); it.hasNext();){
 			MapProcessorThread thread = it.next();
 			if(thread.isFinished())
-				processorThreads.remove(thread);	
+			//	processorThreads.remove(thread);
+				it.remove();
 		}
 
 		for(Iterator<ParserThread> it = parserThreads.iterator(); it.hasNext();){
 			ParserThread thread = it.next();
 			if(thread.isFinished())
-				parserThreads.remove(thread);	
+			//	parserThreads.remove(thread);	
+				it.remove();
 		}
 
 		if(dbResolverThread!= null && dbResolverThread.isFinished())
@@ -306,8 +320,8 @@ public class Controller {
 		synchronized(lock){
 			cleanThreadLists();
 			
-			// System.out.println("[downloader]" + "[parser]" + "[processor]" + "[dbResolver]"+
-			//		mapDownloaderThreads.size() + "|" + parserThreads.size() + "|" + processorThreads.size() + "|" + dbResolverThread);
+			System.out.println("[downloader]" + "[parser]" + "[processor]" + "[dbResolver]"+
+					mapDownloaderThreads.size() + "|" + parserThreads.size() + "|" + processorThreads.size() + "|" + dbResolverThread);
 			
 			return (mapDownloaderThreads.size()==0 && parserThreads.size()==0 && processorThreads.size()==0 &&  dbResolverThread==null);
 		}

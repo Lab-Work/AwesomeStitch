@@ -34,6 +34,7 @@ import my.awesomestitch.mapobjects.Node;
 import my.awesomestitch.mapobjects.Tile;
 import my.awesomestitch.mapobjects.User;
 import my.awesomestitch.mapobjects.UserTile;
+import my.awesomestitch.mapobjects.Way;
 
 
 
@@ -123,7 +124,8 @@ public class DBConnection {
 		String dbUserName = null;
 		String dbPassword = null;
 		String schemaName = null;
-		
+		int max_queue_size = 10;
+	
 
 		//Parse file to get the necessary values
 		try {
@@ -141,10 +143,41 @@ public class DBConnection {
 					schemaName = toks[1].trim();
 				else if(toks[0].equalsIgnoreCase("osm_server_name"))
 					OSM_SERVER_NAME =  toks[1].trim();
+				else if(toks[0].equalsIgnoreCase("max_downloader_threads"))
+				{
 					
+					int max = Integer.parseInt(toks[1].trim());
+					if (max > 0)
+						Controller.setMaxDownloaderThreads(max);
+				}
+				else if(toks[0].equalsIgnoreCase("max_parser_threads"))
+				{
+					int max = Integer.parseInt(toks[1].trim());
+					if (max > 0)
+						Controller.setMaxParserThreads(max);
+				}
+				else if(toks[0].equalsIgnoreCase("max_processor_threads"))
+				{
+					int max = Integer.parseInt(toks[1].trim());
+					if (max > 0)
+						Controller.setMaxProcessorThreads(max);
+				}
+				else if(toks[0].equalsIgnoreCase("max_queue_size"))
+				{
+					int max = Integer.parseInt(toks[1].trim());
+					if (max > 0)
+						max_queue_size = max;
+					DBResolverThread.init(max_queue_size);
+				}
+				else if(toks[0].equalsIgnoreCase("print_log_stdout"))
+					Log.alsoPrint = Boolean.parseBoolean(toks[1].trim());
+				else if(toks[0].equalsIgnoreCase("way_whitelist"))
+					Way.updateWhitelist(toks[1].trim());
+				else if(toks[0].equalsIgnoreCase("way_blacklist"))
+					Way.updateBlacklist(toks[1].trim());
 
 			}
-		} catch (IOException e) {
+		} catch (IOException | NumberFormatException e) {
 			e.printStackTrace();
 		}
 	

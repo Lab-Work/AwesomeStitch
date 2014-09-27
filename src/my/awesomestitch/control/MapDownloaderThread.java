@@ -24,7 +24,7 @@ import my.awesomestitch.mapobjects.UserTile;
 
 
 public class MapDownloaderThread extends Thread{
-	private static int MAX_DOWNLOAD_THREADS = 2;
+	// private static int MAX_DOWNLOAD_THREADS = 2;
 	private static int thread_num = 1;
 	public String name;
 

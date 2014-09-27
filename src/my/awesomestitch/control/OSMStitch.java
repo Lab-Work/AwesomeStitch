@@ -16,7 +16,6 @@ public class OSMStitch {
 		Controller.enqueueSquare(-88.26, 40.113, 1, null, false);
 		
 		Controller.joinAll();
-		// System.out.println("Finished successfully.");
 		
 		BBox box = DBConnection.getEntireMap(true);
 		Plotter.plotMap(box, "tmp_map.pdf");
