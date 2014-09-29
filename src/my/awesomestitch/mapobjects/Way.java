@@ -1,6 +1,9 @@
 package my.awesomestitch.mapobjects;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+
+import my.awesomestitch.control.Log;
 
 
 
@@ -14,12 +17,26 @@ public class Way {
 
 	public boolean oneWay;
 	public boolean backwards;
+	
+	public static String[] blacklist = {"pedestrian","service","track","path","footway","cycleway","bridleway","steps"};
+
+	public static String[] whitelist = {"motorway", "motorway_link"};
 
 	public Way(){
 		nodes = new ArrayList();
 		oneWay = false;
 		backwards = false;
 
+	}
+	
+	public static void updateWhitelist(String classArray) {
+		blacklist = classArray.split(",");
+		Log.v("Way","Using blacklist: " + Arrays.toString(blacklist));
+	}
+	
+	public static void updateBlacklist(String classArray) {
+		whitelist = classArray.split(",");
+		Log.v("Way","Using whitelist: " + Arrays.toString(whitelist));
 	}
 
 	/**
@@ -67,9 +84,7 @@ public class Way {
 	public boolean isImportant(){
 		if(street_class==null)
 			return false;
-		String[] blacklist = {"pedestrian","service","track","path","footway","cycleway","bridleway","steps"};
-
-		String[] whitelist = {"motorway", "motorway_link"};
+		
 		for(String s : blacklist){
 			if(street_class.equals(s))
 				return false;

@@ -20,19 +20,26 @@ public class DBResolverThread extends Thread {
 	public static final long DISTANT_FUTURE = 40000000000000L;
 
 
-
-	public static final int MAX_QUEUE_SIZE=10;
+	private static int MAX_QUEUE_SIZE = 10;
 	/**
 	 * A Queue of detailed BBoxes which need to be added to the DB
 	 */
-	private static Queue<BBox> detailedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
-
+	// private static Queue<BBox> detailedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	private static Queue<BBox> detailedBBoxes = null;
+	
 	/**
 	 * A Queue of processed BBoxes which need to be added to the DB
 	 */
-	private static Queue<BBox> processedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	// private static Queue<BBox> processedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	private static Queue<BBox> processedBBoxes = null;
 
 	private boolean isComplete = false;
+	
+	public static void init(int max) {
+		MAX_QUEUE_SIZE = max;
+		detailedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+		processedBBoxes = new LinkedBlockingQueue<BBox>(MAX_QUEUE_SIZE);
+	}
 
 
 	/**
@@ -150,6 +157,7 @@ public class DBResolverThread extends Thread {
 					//CASE (C) - the Node exists in both OSM and our DB, but the DB is up-to-date
 					//So do nothing
 					chLog.incrementNodes_untouched();
+					
 				}
 			}
 
@@ -431,15 +439,17 @@ public class DBResolverThread extends Thread {
 			//Mark the tile as complete
 			synchronized(Controller.lock){
 				tile.setProcessed_map_status(Tile.DONE);
+				tile.setUpdated_timestamp(System.currentTimeMillis());
 				DBConnection.updateTile(tile);
 			}
 			
 			//TODO: Send Email
+			Notifier.SendNotificationIfNecessary(tile);
 
 		}
 
 		//Mark this thread as complete and start any new threads if necessary
-		isComplete = false;
+		isComplete = true;
 		Controller.startThreadsIfNecessary();
 		
 	}

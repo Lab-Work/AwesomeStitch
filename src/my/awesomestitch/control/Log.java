@@ -19,7 +19,7 @@ public class Log {
 	private static BufferedReader reader;
 
 	private static int MSG_BUFFER_SIZE = 1000;
-	private static boolean alsoPrint = true;
+	public static boolean alsoPrint = true;
 
 	
 	static LinkedList<LogMessage> logTail;

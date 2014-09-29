@@ -20,6 +20,8 @@ public class OSMStitch {
 		BBox box = DBConnection.getEntireMap(true);
 		Plotter.plotMap(box, "tmp_map.pdf");
 		
+		
+		
 	}
 
 }

@@ -24,7 +24,7 @@ import my.awesomestitch.mapobjects.UserTile;
 
 
 public class MapDownloaderThread extends Thread{
-	private static int MAX_DOWNLOAD_THREADS = 2;
+	// private static int MAX_DOWNLOAD_THREADS = 2;
 	private static int thread_num = 1;
 	public String name;
 
@@ -33,7 +33,6 @@ public class MapDownloaderThread extends Thread{
 	private static HashSet<Tile> workingSet = new HashSet<Tile>();
 
 	//private final String OSM_SERVER_NAME = "http://jxapi.openstreetmap.org/xapi/api/0.6/map?";
-	private final String OSM_SERVER_NAME = "http://overpass.osm.rambler.ru/cgi/xapi_meta?map?";
 
 
 	Tile tileToDownload = null;
@@ -53,6 +52,8 @@ public class MapDownloaderThread extends Thread{
 
 	@Override
 	public void run(){
+		
+		
 
 		echo("Processing " + tileToDownload);
 
@@ -88,7 +89,7 @@ public class MapDownloaderThread extends Thread{
 		}
 
 		//Mark this thread as complete and start any new threads if necessary
-		isComplete = false;
+		isComplete = true;
 		Controller.startThreadsIfNecessary();
 
 	}
@@ -118,7 +119,7 @@ public class MapDownloaderThread extends Thread{
 
 
 		//URL makes call to openstreetmap's jxapi library
-		String address = OSM_SERVER_NAME + "bbox=" + left + "," + bottom + "," + right + "," + top;
+		String address = DBConnection.OSM_SERVER_NAME + "bbox=" + left + "," + bottom + "," + right + "," + top;
 
 
 		//The place where we will save the returned .osm file
