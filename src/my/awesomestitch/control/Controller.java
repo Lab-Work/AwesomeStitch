@@ -325,8 +325,8 @@ public class Controller {
 		synchronized(lock){
 			cleanThreadLists();
 			
-			System.out.println("[downloader]" + "[parser]" + "[processor]" + "[dbResolver]"+
-					mapDownloaderThreads.size() + "|" + parserThreads.size() + "|" + processorThreads.size() + "|" + dbResolverThread);
+			// System.out.println("[downloader]" + "[parser]" + "[processor]" + "[dbResolver]"+
+			//		mapDownloaderThreads.size() + "|" + parserThreads.size() + "|" + processorThreads.size() + "|" + dbResolverThread);
 			
 			return (mapDownloaderThreads.size()==0 && parserThreads.size()==0 && processorThreads.size()==0 &&  dbResolverThread==null);
 		}
