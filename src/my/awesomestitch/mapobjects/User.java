@@ -127,9 +127,13 @@ public class User extends DBObject{
 		//query has form
 		//INSERT INTO schema_name.nodes (user_id, username, password, email, phone_number, first_name, last_name)
 		//VALUES (?,?,?,?,?,?,?);
+		
+		// String query = "INSERT INTO " + getTableName() + " (user_id, username, password, email, phone_number, first_name, last_name)"+
+		//		"VALUES (" + user_id + ", '" + username + "', '" + password + "', '" + email + "', '" + phone_number + "', '" +
+		//		first_name + "', '" + last_name + "');";
+		
 		String query = "INSERT INTO " + getTableName() + " (user_id, username, password, email, phone_number, first_name, last_name)"+
-				"VALUES (" + user_id + ", '" + username + "', '" + password + "', '" + email + "', '" + phone_number + "', '" +
-				first_name + "', '" + last_name + "');";
+				"VALUES (" + user_id + ", ?, ?, ?, ?, ?, ?)";
 		return query;
 	}
 

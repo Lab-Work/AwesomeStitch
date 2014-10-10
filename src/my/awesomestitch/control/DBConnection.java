@@ -11,6 +11,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.PreparedStatement;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.LinkedList;
@@ -387,6 +388,41 @@ public class DBConnection {
 	public static void insertNow(DBObject dbo){
 		//first make sure the id is unique
 		updateId(dbo);
+		
+		if (dbo instanceof my.awesomestitch.mapobjects.User )
+		{
+			String sql = dbo.getInsertStatement();
+			sql = sql.replace("tmp_schema", DBConnection.getSchemaName());
+			
+			try{
+				PreparedStatement pst = con.prepareStatement(sql);
+				pst.setString(1, ((my.awesomestitch.mapobjects.User) dbo).getUsername());
+				pst.setString(2, ((my.awesomestitch.mapobjects.User) dbo).getPassword());
+				pst.setString(3, ((my.awesomestitch.mapobjects.User) dbo).getEmail());
+				pst.setString(4, ((my.awesomestitch.mapobjects.User) dbo).getPhone_number());
+				pst.setString(5, ((my.awesomestitch.mapobjects.User) dbo).getFirst_name());
+				pst.setString(6, ((my.awesomestitch.mapobjects.User) dbo).getLast_name());
+				pst.executeUpdate();
+			}
+			catch(SQLException e){
+				String tname = dbo.getTableName().replace("tmp_schema", DBConnection.getSchemaName());
+
+				if(e.getSQLState().equals("23505")){
+					//uniqueness violation - that is ok
+					Log.v("DB","SQL Exception on insert into: " + tname + "--uniqueness");
+					Log.v("DEBUG", sql);
+				}
+				else{
+					Log.v("DB",sql);
+					Log.v("DB","SQL Exception on insert into: " + tname);
+					Log.v("DB","Code : " + e.getSQLState());
+					Log.e(e);
+				}
+			}
+			
+			return;
+		}
+		
 		//get the sql statment to insert this object
 		String sql = dbo.getInsertStatement();
 		sql = sql.replace("tmp_schema", DBConnection.getSchemaName());
@@ -661,11 +697,16 @@ public class DBConnection {
 		try{
 			//Look up user by username
 			//Prepare query
-			String query = "SELECT * FROM " + u.getTableName() + " WHERE username='" + u.getUsername() + "';";
+			
+			// TODO: SQL Injection
+			
+			// String query = "SELECT * FROM " + u.getTableName() + " WHERE username='" + u.getUsername() + "';";
+			String query = "SELECT * FROM " + u.getTableName() + " WHERE username= ?";
 			query = query.replace("tmp_schema", DBConnection.getSchemaName());
+			PreparedStatement pst = DBConnection.getConnection().prepareStatement(query);
+			pst.setString(1, u.getUsername());
 			//execute query
-			Statement st = DBConnection.getConnection().createStatement();
-			ResultSet rs = st.executeQuery(query);
+			ResultSet rs = pst.executeQuery(query);
 			//Generate a User from the row returned from the database
 			if(rs.next()){
 				User matchUser = new User(rs);
